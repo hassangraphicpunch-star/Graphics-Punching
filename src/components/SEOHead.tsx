@@ -151,10 +151,11 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
 
   useEffect(() => {
     const config = ROUTE_METADATA_MAP[page] || ROUTE_METADATA_MAP.home;
+    const pageSeo = settings?.seo?.[page] || (page === 'home' ? settings?.seo?.home : undefined);
 
-    const baseTitle = page === 'home' && settings.seo.siteTitle ? settings.seo.siteTitle : config.title;
-    const baseDescription = page === 'home' && settings.seo.metaDescription ? settings.seo.metaDescription : config.description;
-    const baseKeywords = page === 'home' && settings.seo.keywords ? settings.seo.keywords : config.keywords;
+    const baseTitle = pageSeo?.title || config.title;
+    const baseDescription = pageSeo?.description || config.description;
+    const baseKeywords = pageSeo?.keywords || config.keywords;
 
     const finalTitle = title || baseTitle;
     const finalDescription = description || baseDescription;
@@ -171,13 +172,13 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
     // 2. Standard Meta Tags
     setMetaTag('name', 'description', finalDescription);
     setMetaTag('name', 'keywords', finalKeywords);
-    setMetaTag('name', 'robots', settings.seo.googleSiteVerification ? 'index, follow' : 'index, follow');
+    setMetaTag('name', 'robots', 'index, follow');
 
     // 3. Canonical Link Tag
     setLinkTag('canonical', canonicalUrl);
 
     // 4. OpenGraph Tags
-    setMetaTag('property', 'og:site_name', settings.branding.siteName || 'Graphics Punching');
+    setMetaTag('property', 'og:site_name', settings?.branding?.siteName || 'Graphics Punching');
     setMetaTag('property', 'og:title', finalTitle);
     setMetaTag('property', 'og:description', finalDescription);
     setMetaTag('property', 'og:url', canonicalUrl);
@@ -202,17 +203,17 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
     jsonLdScript.textContent = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'ProfessionalService',
-      name: settings.branding.siteName || 'Graphics Punching',
+      name: settings?.branding?.siteName || 'Graphics Punching',
       url: origin,
       logo: `${origin}/favicon.png`,
-      email: settings.contact.email || CONTACT_INFO.email,
-      telephone: settings.contact.phone || CONTACT_INFO.phone,
+      email: settings?.contact?.email || CONTACT_INFO.email,
+      telephone: settings?.contact?.phone || CONTACT_INFO.phone,
       description: finalDescription,
       sameAs: [
-        settings.social.facebook,
-        settings.social.instagram,
-        settings.social.pinterest,
-        settings.social.website,
+        settings?.social?.facebook,
+        settings?.social?.instagram,
+        settings?.social?.pinterest,
+        settings?.social?.website,
       ].filter(Boolean),
     });
   }, [page, title, description, keywords, canonicalPath, image, settings]);
