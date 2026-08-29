@@ -86,7 +86,7 @@ const DEFAULT_SOCIAL: SocialLinksSettings = {
   tiktok: 'https://tiktok.com',
   twitter: 'https://x.com',
   whatsapp: '+16072050030',
-  website: 'https://www.graphicspunching.com,
+  website: 'https://www.graphicspunching.com',
 };
 
 const DEFAULT_WATERMARK: WatermarkConfig = {
