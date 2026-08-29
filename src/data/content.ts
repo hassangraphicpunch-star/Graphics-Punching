@@ -418,7 +418,7 @@ export const CONTACT_INFO = {
     facebook: 'https://www.facebook.com/profile.php?id=61593649506118',
     instagram: 'https://instagram.com',
     pinterest: 'https://pinterest.com',
-    website: 'https://www.graphicspunching.com'
+    website: ':https://www.graphicspunching.com/'
   }
 };
 
