@@ -1,0 +1,6 @@
+{
+  "name": "Graphics Punching",
+  "description": "Professional Screen Printing, Embroidery Digitizing, Vector Artwork & Custom Apparel Services.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
