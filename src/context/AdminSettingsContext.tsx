@@ -322,31 +322,51 @@ const STORAGE_KEYS = {
   AUTO_PUBLISH: 'gp_auto_publish_live_v2',
 };
 
+const DEFAULT_SETTINGS: WebsiteSettings = {
+  branding: DEFAULT_BRANDING,
+  homepage: DEFAULT_HOMEPAGE,
+  contact: DEFAULT_CONTACT,
+  emailSettings: DEFAULT_EMAIL_SETTINGS,
+  social: DEFAULT_SOCIAL,
+  watermark: DEFAULT_WATERMARK,
+  sections: DEFAULT_SECTIONS,
+  navigation: DEFAULT_NAVIGATION,
+  footer: DEFAULT_FOOTER,
+  seo: DEFAULT_SEO,
+  services: SERVICES,
+  pricingPackages: SERVICE_PACKAGES,
+};
+
+export const sanitizeSettings = (raw: any): WebsiteSettings => {
+  if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS;
+  return {
+    branding: { ...DEFAULT_BRANDING, ...(raw.branding || {}) },
+    homepage: { ...DEFAULT_HOMEPAGE, ...(raw.homepage || {}) },
+    contact: { ...DEFAULT_CONTACT, ...(raw.contact || {}) },
+    emailSettings: { ...DEFAULT_EMAIL_SETTINGS, ...(raw.emailSettings || {}) },
+    social: { ...DEFAULT_SOCIAL, ...(raw.social || {}) },
+    watermark: { ...DEFAULT_WATERMARK, ...(raw.watermark || {}) },
+    sections: { ...DEFAULT_SECTIONS, ...(raw.sections || {}) },
+    navigation: Array.isArray(raw.navigation) && raw.navigation.length > 0 ? raw.navigation : DEFAULT_NAVIGATION,
+    footer: { ...DEFAULT_FOOTER, ...(raw.footer || {}) },
+    seo: { ...DEFAULT_SEO, ...(raw.seo || {}) },
+    services: Array.isArray(raw.services) && raw.services.length > 0 ? raw.services : SERVICES,
+    pricingPackages: Array.isArray(raw.pricingPackages) && raw.pricingPackages.length > 0 ? raw.pricingPackages : SERVICE_PACKAGES,
+  };
+};
+
 export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // 1. Settings State
   const [settings, setSettings] = useState<WebsiteSettings>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (saved) {
-        return JSON.parse(saved);
+        return sanitizeSettings(JSON.parse(saved));
       }
     } catch (e) {
       console.warn('Error reading settings from localStorage:', e);
     }
-    return {
-      branding: DEFAULT_BRANDING,
-      homepage: DEFAULT_HOMEPAGE,
-      contact: DEFAULT_CONTACT,
-      emailSettings: DEFAULT_EMAIL_SETTINGS,
-      social: DEFAULT_SOCIAL,
-      watermark: DEFAULT_WATERMARK,
-      sections: DEFAULT_SECTIONS,
-      navigation: DEFAULT_NAVIGATION,
-      footer: DEFAULT_FOOTER,
-      seo: DEFAULT_SEO,
-      services: SERVICES,
-      pricingPackages: SERVICE_PACKAGES,
-    };
+    return DEFAULT_SETTINGS;
   });
 
   // 2. Portfolio Items State
@@ -450,8 +470,9 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
         if (json.success && json.hasCustomData && json.data) {
           const published = json.data;
           if (published.settings) {
-            setSettings(published.settings);
-            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(published.settings));
+            const sanitized = sanitizeSettings(published.settings);
+            setSettings(sanitized);
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
           }
           if (Array.isArray(published.portfolioItems) && published.portfolioItems.length > 0) {
             setPortfolioItems(published.portfolioItems);
@@ -502,7 +523,11 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
           const packet = JSON.parse(event.data);
           if (packet.type === 'published_update' && packet.data) {
             const updated = packet.data;
-            if (updated.settings) setSettings(updated.settings);
+            if (updated.settings) {
+              const sanitized = sanitizeSettings(updated.settings);
+              setSettings(sanitized);
+              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+            }
             if (Array.isArray(updated.portfolioItems)) setPortfolioItems(updated.portfolioItems);
             if (Array.isArray(updated.leads)) setLeads(updated.leads);
             if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
@@ -909,10 +934,23 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   const importSettingsJSON = (jsonStr: string): boolean => {
     try {
       const data = JSON.parse(jsonStr);
-      if (data.settings) setSettings(data.settings);
-      if (Array.isArray(data.portfolioItems)) setPortfolioItems(data.portfolioItems);
-      if (Array.isArray(data.leads)) setLeads(data.leads);
-      if (Array.isArray(data.emailLogs)) setEmailLogs(data.emailLogs);
+      if (data.settings) {
+        const sanitized = sanitizeSettings(data.settings);
+        setSettings(sanitized);
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+      }
+      if (Array.isArray(data.portfolioItems)) {
+        setPortfolioItems(data.portfolioItems);
+        localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(data.portfolioItems));
+      }
+      if (Array.isArray(data.leads)) {
+        setLeads(data.leads);
+        localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(data.leads));
+      }
+      if (Array.isArray(data.emailLogs)) {
+        setEmailLogs(data.emailLogs);
+        localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(data.emailLogs));
+      }
       return true;
     } catch (e) {
       console.error('Failed to import configuration:', e);
