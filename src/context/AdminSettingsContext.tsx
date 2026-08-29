@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { computeHashSync, DEFAULT_AUTH_HASH } from '../utils/security';
 import {
   WebsiteSettings,
@@ -256,6 +256,16 @@ interface AdminSettingsContextType {
   previewMode: boolean;
   isAdminAuthenticated: boolean;
 
+  // Real-Time Live Sync & Publishing
+  isPublishing: boolean;
+  hasUnpublishedChanges: boolean;
+  lastPublishedAt: string | null;
+  autoPublishLive: boolean;
+  syncStatus: 'synced' | 'unsaved' | 'publishing' | 'offline' | 'error';
+  publishToLive: (options?: { quiet?: boolean; note?: string }) => Promise<{ success: boolean; message: string; publishedAt?: string }>;
+  toggleAutoPublishLive: () => void;
+  syncFromServer: () => Promise<void>;
+
   // Authentication
   loginAdmin: (passwordOrPin: string) => boolean;
   logoutAdmin: () => void;
@@ -308,6 +318,8 @@ const STORAGE_KEYS = {
   EMAIL_LOGS: 'gp_email_logs_v2',
   AUTH: 'gp_admin_session_auth_v2',
   AUTH_HASH: 'gp_admin_auth_hash_v2',
+  LAST_PUBLISHED: 'gp_last_published_at_v2',
+  AUTO_PUBLISH: 'gp_auto_publish_live_v2',
 };
 
 export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -406,14 +418,212 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   // 6. Preview Mode State
   const [previewMode, setPreviewMode] = useState<boolean>(false);
 
-  // Persistence Effects
+  // 7. Real-Time Live Sync & Publishing State
+  const [isPublishing, setIsPublishing] = useState<boolean>(false);
+  const [hasUnpublishedChanges, setHasUnpublishedChanges] = useState<boolean>(false);
+  const [lastPublishedAt, setLastPublishedAt] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.LAST_PUBLISHED) || null;
+    } catch {
+      return null;
+    }
+  });
+  const [autoPublishLive, setAutoPublishLive] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.AUTO_PUBLISH) === 'true';
+    } catch {
+      return true; // Default ON for seamless real-time syncing
+    }
+  });
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'unsaved' | 'publishing' | 'offline' | 'error'>('synced');
+
+  // Track initial server fetch completion
+  const isInitialServerFetchDone = useRef<boolean>(false);
+  const autoPublishTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Synchronize from Server
+  const syncFromServer = useCallback(async () => {
+    try {
+      const res = await fetch('/api/site/data');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.hasCustomData && json.data) {
+          const published = json.data;
+          if (published.settings) {
+            setSettings(published.settings);
+            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(published.settings));
+          }
+          if (Array.isArray(published.portfolioItems) && published.portfolioItems.length > 0) {
+            setPortfolioItems(published.portfolioItems);
+            localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(published.portfolioItems));
+          }
+          if (Array.isArray(published.leads)) {
+            setLeads(published.leads);
+            localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(published.leads));
+          }
+          if (Array.isArray(published.emailLogs)) {
+            setEmailLogs(published.emailLogs);
+            localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(published.emailLogs));
+          }
+          if (json.publishedAt) {
+            setLastPublishedAt(json.publishedAt);
+            localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, json.publishedAt);
+          }
+          setHasUnpublishedChanges(false);
+          setSyncStatus('synced');
+        }
+      }
+    } catch (err) {
+      console.warn('Could not sync with server:', err);
+    }
+  }, []);
+
+  // 1. Initial Load: Fetch published website data from server
+  useEffect(() => {
+    syncFromServer().finally(() => {
+      isInitialServerFetchDone.current = true;
+    });
+  }, [syncFromServer]);
+
+  // 2. Real-Time Server-Sent Events (SSE) Listener for Live Updates
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let fallbackPollInterval: NodeJS.Timeout | null = null;
+
+    try {
+      eventSource = new EventSource('/api/site/events');
+
+      eventSource.onopen = () => {
+        setSyncStatus((prev) => (prev === 'offline' ? 'synced' : prev));
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const packet = JSON.parse(event.data);
+          if (packet.type === 'published_update' && packet.data) {
+            const updated = packet.data;
+            if (updated.settings) setSettings(updated.settings);
+            if (Array.isArray(updated.portfolioItems)) setPortfolioItems(updated.portfolioItems);
+            if (Array.isArray(updated.leads)) setLeads(updated.leads);
+            if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
+            if (packet.publishedAt) {
+              setLastPublishedAt(packet.publishedAt);
+              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, packet.publishedAt);
+            }
+            setHasUnpublishedChanges(false);
+            setSyncStatus('synced');
+          } else if (packet.type === 'new_lead' && packet.lead) {
+            setLeads((prev) => [packet.lead, ...prev.filter((l) => l.id !== packet.lead.id)]);
+          } else if (packet.type === 'reset_to_defaults') {
+            syncFromServer();
+          }
+        } catch (e) {
+          console.warn('Error parsing SSE event:', e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        // Fallback to polling if SSE encounters transient interruption
+        if (!fallbackPollInterval) {
+          fallbackPollInterval = setInterval(() => {
+            syncFromServer();
+          }, 15000);
+        }
+      };
+    } catch (e) {
+      console.warn('SSE not supported or failed to connect:', e);
+      fallbackPollInterval = setInterval(() => {
+        syncFromServer();
+      }, 15000);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+      if (fallbackPollInterval) clearInterval(fallbackPollInterval);
+    };
+  }, [syncFromServer]);
+
+  // Publish to Live Website Action
+  const publishToLive = async (options?: { quiet?: boolean; note?: string }): Promise<{ success: boolean; message: string; publishedAt?: string }> => {
+    setIsPublishing(true);
+    setSyncStatus('publishing');
+
+    try {
+      const payload = {
+        settings,
+        portfolioItems,
+        leads,
+        emailLogs,
+        note: options?.note || 'Published via Admin Portal',
+      };
+
+      const res = await fetch('/api/admin/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+
+      const json = await res.json();
+
+      if (json.success) {
+        const publishTimestamp = json.publishedAt || new Date().toISOString();
+        setLastPublishedAt(publishTimestamp);
+        setHasUnpublishedChanges(false);
+        setSyncStatus('synced');
+        localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
+        setIsPublishing(false);
+        return {
+          success: true,
+          message: 'Website published and synchronized live to all visitors in real-time.',
+          publishedAt: publishTimestamp,
+        };
+      } else {
+        throw new Error(json.error || 'Failed to publish');
+      }
+    } catch (error: any) {
+      console.error('Publish to live failed:', error);
+      setIsPublishing(false);
+      setSyncStatus('error');
+      return {
+        success: false,
+        message: error?.message || 'Network error while publishing to live server.',
+      };
+    }
+  };
+
+  // Toggle Auto-Publish Mode
+  const toggleAutoPublishLive = () => {
+    setAutoPublishLive((prev) => {
+      const next = !prev;
+      localStorage.setItem(STORAGE_KEYS.AUTO_PUBLISH, next ? 'true' : 'false');
+      return next;
+    });
+  };
+
+  // Persistence Effects to LocalStorage and Auto-Publish
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     } catch (e) {
       console.warn('Failed to persist settings:', e);
     }
-  }, [settings]);
+
+    if (isInitialServerFetchDone.current) {
+      setHasUnpublishedChanges(true);
+      if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+
+      if (autoPublishLive) {
+        if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
+        autoPublishTimeoutRef.current = setTimeout(() => {
+          publishToLive({ quiet: true, note: 'Auto-published live update' });
+        }, 1200);
+      }
+    }
+  }, [settings, autoPublishLive]);
 
   useEffect(() => {
     try {
@@ -421,7 +631,19 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (e) {
       console.warn('Failed to persist portfolio items:', e);
     }
-  }, [portfolioItems]);
+
+    if (isInitialServerFetchDone.current) {
+      setHasUnpublishedChanges(true);
+      if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+
+      if (autoPublishLive) {
+        if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
+        autoPublishTimeoutRef.current = setTimeout(() => {
+          publishToLive({ quiet: true, note: 'Auto-published live portfolio update' });
+        }, 1200);
+      }
+    }
+  }, [portfolioItems, autoPublishLive]);
 
   useEffect(() => {
     try {
@@ -706,6 +928,14 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       emailLogs,
       previewMode,
       isAdminAuthenticated,
+      isPublishing,
+      hasUnpublishedChanges,
+      lastPublishedAt,
+      autoPublishLive,
+      syncStatus,
+      publishToLive,
+      toggleAutoPublishLive,
+      syncFromServer,
       loginAdmin,
       logoutAdmin,
       changeAdminPassword,
@@ -737,7 +967,22 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       exportSettingsJSON,
       importSettingsJSON,
     }),
-    [settings, portfolioItems, leads, emailLogs, previewMode, isAdminAuthenticated]
+    [
+      settings,
+      portfolioItems,
+      leads,
+      emailLogs,
+      previewMode,
+      isAdminAuthenticated,
+      isPublishing,
+      hasUnpublishedChanges,
+      lastPublishedAt,
+      autoPublishLive,
+      syncStatus,
+      publishToLive,
+      toggleAutoPublishLive,
+      syncFromServer,
+    ]
   );
 
   return <AdminSettingsContext.Provider value={value}>{children}</AdminSettingsContext.Provider>;
