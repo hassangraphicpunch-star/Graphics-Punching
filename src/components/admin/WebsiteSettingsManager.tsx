@@ -30,6 +30,14 @@ import {
   HelpCircle,
   Lock,
   Copy,
+  UploadCloud,
+  Clock,
+  Zap,
+  RefreshCw,
+  Loader2,
+  Globe,
+  Radio,
+  Check,
 } from 'lucide-react';
 import { useWebsiteSettings } from '../../context/AdminSettingsContext';
 import { EditablePortfolioItem, NavigationMenuItem } from '../../types/admin';
@@ -38,6 +46,14 @@ export const WebsiteSettingsManager: React.FC = () => {
   const {
     settings,
     portfolioItems,
+    isPublishing,
+    hasUnpublishedChanges,
+    lastPublishedAt,
+    autoPublishLive,
+    toggleAutoPublishLive,
+    syncStatus,
+    publishToLive,
+    syncFromServer,
     changeAdminPassword,
     updateBranding,
     updateHomepage,
@@ -64,6 +80,7 @@ export const WebsiteSettingsManager: React.FC = () => {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<
+    | 'publish'
     | 'branding'
     | 'homepage'
     | 'contact'
@@ -185,13 +202,16 @@ export const WebsiteSettingsManager: React.FC = () => {
       )}
 
       {/* Header Controls Bar */}
-      <div className="bg-[#0e0e11] border border-zinc-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-[#0e0e11] border border-zinc-800 rounded-2xl p-4 sm:p-5 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="px-2.5 py-1 rounded-md bg-[#FFC400]/15 text-[#FFC400] border border-[#FFC400]/30 text-[10px] font-black uppercase tracking-wider">
-              Live Management
+              Live Management &amp; CMS
             </span>
-            <span className="text-xs text-zinc-400 font-mono">No Code Deploy Required</span>
+            <span className="flex items-center gap-1 text-xs text-zinc-400 font-mono">
+              <span className={`w-2 h-2 rounded-full ${syncStatus === 'synced' ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : syncStatus === 'publishing' ? 'bg-blue-400 animate-spin' : 'bg-amber-400 animate-pulse'}`} />
+              {syncStatus === 'synced' ? 'Live & Synced' : syncStatus === 'publishing' ? 'Publishing...' : 'Pending Publish'}
+            </span>
           </div>
           <h2 className="text-lg sm:text-xl font-display font-black text-white uppercase mt-1">
             Website Content &amp; System Settings
@@ -201,7 +221,7 @@ export const WebsiteSettingsManager: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           <button
             type="button"
             onClick={togglePreviewMode}
@@ -217,13 +237,32 @@ export const WebsiteSettingsManager: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => {
-              triggerSaveNotification('All settings synced & active across live website');
+            onClick={async () => {
+              const res = await publishToLive({ note: 'Manual publish via Settings Manager' });
+              if (res.success) {
+                triggerSaveNotification('All website settings published & live to all visitors!');
+              } else {
+                triggerSaveNotification(`Sync warning: ${res.message}`);
+              }
             }}
-            className="px-4 py-2 bg-[#FFC400] hover:bg-[#ffcd1a] text-black font-black text-xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-[0_4px_14px_rgba(255,196,0,0.25)] transition-all cursor-pointer"
+            disabled={isPublishing}
+            className={`px-4 py-2 text-black font-black text-xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 shadow-[0_4px_14px_rgba(255,196,0,0.25)] transition-all cursor-pointer ${
+              hasUnpublishedChanges
+                ? 'bg-gradient-to-r from-[#FFC400] to-[#ffaa00] hover:from-[#ffd033] hover:to-[#ffb71a] animate-pulse'
+                : 'bg-[#FFC400] hover:bg-[#ffcd1a]'
+            }`}
           >
-            <Save className="w-3.5 h-3.5" />
-            <span>Save All</span>
+            {isPublishing ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
+                <span>Publishing Live...</span>
+              </>
+            ) : (
+              <>
+                <UploadCloud className="w-3.5 h-3.5 text-black" />
+                <span>{hasUnpublishedChanges ? 'Publish Changes Live' : 'Publish & Sync All'}</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -237,6 +276,7 @@ export const WebsiteSettingsManager: React.FC = () => {
           </div>
 
           {[
+            { id: 'publish', label: '🚀 Live Sync & Publish', icon: UploadCloud, badge: hasUnpublishedChanges ? 'UNSAVED' : 'LIVE' },
             { id: 'branding', label: 'Branding & Logo', icon: Type },
             { id: 'homepage', label: 'Homepage & Copy', icon: Sliders },
             { id: 'contact', label: 'Contact & Business', icon: Phone },
@@ -1483,6 +1523,161 @@ export const WebsiteSettingsManager: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* 0. LIVE SYNC & PUBLISH DASHBOARD */}
+          {activeTab === 'publish' && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="border-b border-zinc-800 pb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-base sm:text-lg font-display font-black text-white uppercase flex items-center gap-2">
+                    <UploadCloud className="w-5 h-5 text-[#FFC400]" />
+                    Live Website Publishing &amp; Synchronization Engine
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-1">
+                    Manage real-time persistent synchronization between the Admin Portal and live visitors across all devices.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => syncFromServer()}
+                    className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Pull Live Data</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Overview Bento */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Sync Status Card */}
+                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      Sync Status
+                    </span>
+                    <span
+                      className={`w-2.5 h-2.5 rounded-full ${
+                        syncStatus === 'synced'
+                          ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
+                          : syncStatus === 'publishing'
+                          ? 'bg-blue-400 animate-spin'
+                          : 'bg-amber-400 animate-pulse'
+                      }`}
+                    />
+                  </div>
+                  <div className="text-base font-bold text-white flex items-center gap-2">
+                    {syncStatus === 'synced' && <span className="text-emerald-400">All Changes Live</span>}
+                    {syncStatus === 'unsaved' && <span className="text-amber-400">Changes Pending</span>}
+                    {syncStatus === 'publishing' && <span className="text-blue-400">Publishing...</span>}
+                    {syncStatus === 'error' && <span className="text-red-400">Sync Error</span>}
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {hasUnpublishedChanges
+                      ? 'You have edits waiting to be broadcast live to website visitors.'
+                      : 'Server state and browser state are in 100% sync.'}
+                  </p>
+                </div>
+
+                {/* Auto Publish Mode */}
+                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      Auto-Publish Live
+                    </span>
+                    <Zap className={`w-4 h-4 ${autoPublishLive ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                  </div>
+                  <div className="text-base font-bold text-white">
+                    {autoPublishLive ? (
+                      <span className="text-emerald-400">Enabled (Instant)</span>
+                    ) : (
+                      <span className="text-zinc-400">Manual Publish</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    {autoPublishLive
+                      ? 'Edits are immediately written to disk and pushed to visitors via SSE.'
+                      : 'You must click "Publish to Live" to push changes.'}
+                  </p>
+                </div>
+
+                {/* Last Published Timestamp */}
+                <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+                      Last Live Publish
+                    </span>
+                    <Clock className="w-4 h-4 text-zinc-500" />
+                  </div>
+                  <div className="text-sm font-bold text-zinc-200">
+                    {lastPublishedAt
+                      ? new Date(lastPublishedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+                        ' (' +
+                        new Date(lastPublishedAt).toLocaleDateString() +
+                        ')'
+                      : 'Not published yet'}
+                  </div>
+                  <p className="text-[11px] text-zinc-400">
+                    Timestamp of the authoritative release on server disk.
+                  </p>
+                </div>
+              </div>
+
+              {/* Main Publish Action Box */}
+              <div className="p-6 bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl space-y-5">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h4 className="text-base font-black text-white uppercase flex items-center gap-2">
+                      <Globe className="w-5 h-5 text-[#FFC400]" />
+                      Broadcast Live to Production
+                    </h4>
+                    <p className="text-xs text-zinc-300 max-w-xl">
+                      Writes current branding, pricing, contact details, portfolio items, and navigation to the server&apos;s persistent database and triggers an immediate real-time event to all connected visitors.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await publishToLive({ note: 'Full broadcast via Publish Dashboard' });
+                      if (res.success) {
+                        triggerSaveNotification('🚀 Website published live & synchronized across all clients!');
+                      } else {
+                        triggerSaveNotification(`Sync error: ${res.message}`);
+                      }
+                    }}
+                    disabled={isPublishing}
+                    className="w-full md:w-auto px-6 py-3.5 bg-[#FFC400] hover:bg-[#ffcd1a] text-black font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(255,196,0,0.35)] transition-all cursor-pointer shrink-0"
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-black" />
+                        <span>Publishing to Live Site...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UploadCloud className="w-4 h-4 text-black" />
+                        <span>Publish All Changes to Live Website</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Instant Verification Check */}
+                <div className="pt-4 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Real-time SSE Broadcast Pipeline: <strong>/api/site/events</strong></span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span>Authoritative State Store: <strong>data/published_site_data.json</strong></span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
