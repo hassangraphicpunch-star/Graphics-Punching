@@ -50,9 +50,19 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({ onSuccess }) => {
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-[#FFC400]/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-zinc-800/20 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Lock Icon Badge */}
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-b from-zinc-800 to-zinc-900 border border-zinc-700/80 mx-auto flex items-center justify-center text-[#FFC400] shadow-inner mb-5">
-          <Lock className="w-8 h-8" />
+        {/* Brand Logo & Security Badge */}
+        <div className="relative mx-auto mb-5 w-20 h-20">
+          <div className="absolute -inset-1 bg-gradient-to-tr from-[#FFC400]/40 to-transparent rounded-full blur-md" />
+          <div className="w-20 h-20 rounded-full bg-zinc-950 border-2 border-[#FFC400]/80 p-1 shadow-2xl relative flex items-center justify-center overflow-hidden">
+            <img 
+              src="/logo.png" 
+              alt="Graphics Punching Logo" 
+              className="w-full h-full object-contain rounded-full" 
+            />
+          </div>
+          <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#FFC400] text-black flex items-center justify-center shadow-lg border border-black font-bold">
+            <Lock className="w-3.5 h-3.5" />
+          </div>
         </div>
 
         <h2 className="text-xl sm:text-2xl font-display font-black text-white uppercase tracking-tight">

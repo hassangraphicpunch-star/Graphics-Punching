@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { ImageLightboxModal, LightboxImageItem } from './ImageLightboxModal';
 import { WatermarkOverlay } from './WatermarkOverlay';
+import { WatermarkedPortfolioImage } from './WatermarkedPortfolioImage';
 import { downloadWatermarkedImage } from '../utils/watermark';
 import { useWebsiteSettings } from '../context/AdminSettingsContext';
 import { PortfolioItem, PORTFOLIO_PROJECTS } from '../data/content';
@@ -137,11 +138,11 @@ export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ onOpenQuoteM
                   style={{ backgroundImage: `url(${project.image})` }}
                 />
 
-                {/* Main Original Image - Zero Cropping, Zero Distortion */}
-                <img
+                {/* Main Original Image - Zero Cropping, Stamped with Official Watermark */}
+                <WatermarkedPortfolioImage
                   src={project.image}
                   alt={project.title}
-                  referrerPolicy="no-referrer"
+                  title={project.title}
                   className="max-w-full max-h-full w-auto h-auto object-contain drop-shadow-[0_8px_25px_rgba(0,0,0,0.7)] group-hover:scale-105 transition-transform duration-500 ease-out relative z-0"
                   loading="lazy"
                 />
@@ -327,10 +328,10 @@ export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ onOpenQuoteM
             </h3>
 
             <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black p-3 flex items-center justify-center border border-zinc-800">
-              <img
+              <WatermarkedPortfolioImage
                 src={selectedProject.image}
                 alt={selectedProject.title}
-                referrerPolicy="no-referrer"
+                title={selectedProject.title}
                 className="max-w-full max-h-full object-contain"
               />
               <WatermarkOverlay size="sm" />

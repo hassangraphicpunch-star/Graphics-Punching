@@ -19,8 +19,12 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onOpenQuoteModal }) 
             <div className="bg-zinc-950 rounded-2xl p-6 sm:p-8 border border-zinc-800 shadow-2xl space-y-6">
               <div className="flex items-center justify-between pb-4 border-b border-zinc-800">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#FFC400]/10 text-[#FFC400] flex items-center justify-center font-display font-black text-xl border border-[#FFC400]/30">
-                    GP
+                  <div className="w-12 h-12 rounded-full bg-zinc-900 border border-[#FFC400]/50 p-0.5 shadow-md flex items-center justify-center overflow-hidden shrink-0">
+                    <img 
+                      src="/logo.png" 
+                      alt="Graphics Punching Logo" 
+                      className="w-full h-full object-contain rounded-full" 
+                    />
                   </div>
                   <div>
                     <h3 className="font-display font-black text-lg text-white uppercase">Industrial Precision Facility</h3>

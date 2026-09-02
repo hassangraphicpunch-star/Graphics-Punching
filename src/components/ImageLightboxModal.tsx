@@ -5,6 +5,7 @@ import {
   Download, Check, ShieldCheck
 } from 'lucide-react';
 import { WatermarkOverlay } from './WatermarkOverlay';
+import { WatermarkedPortfolioImage } from './WatermarkedPortfolioImage';
 import { downloadWatermarkedImage } from '../utils/watermark';
 
 export interface LightboxImageItem {
