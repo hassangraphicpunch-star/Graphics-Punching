@@ -6,6 +6,8 @@
  * the saved image file on their computer permanently includes the official watermark.
  */
 
+import { resolvePortfolioImageUrl } from './imageResolver';
+
 export interface WatermarkRenderOptions {
   watermarkText?: string;
   subtext?: string;
@@ -203,7 +205,8 @@ export async function getWatermarkedImageUrl(
 ): Promise<string> {
   if (!imageSrc) return imageSrc;
 
-  const cacheKey = getWatermarkCacheKey(imageSrc, options);
+  const resolvedSrc = resolvePortfolioImageUrl(imageSrc);
+  const cacheKey = getWatermarkCacheKey(resolvedSrc, options);
 
   if (watermarkUrlCache.has(cacheKey)) {
     return watermarkUrlCache.get(cacheKey)!;
@@ -215,7 +218,7 @@ export async function getWatermarkedImageUrl(
 
   const promise = (async () => {
     try {
-      const img = await loadImageElement(imageSrc);
+      const img = await loadImageElement(resolvedSrc);
       const canvas = document.createElement('canvas');
       renderWatermarkToCanvas(img, canvas, options);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
@@ -223,7 +226,7 @@ export async function getWatermarkedImageUrl(
       return dataUrl;
     } catch (err) {
       console.warn('Watermark generation encountered an error, falling back to original image:', err);
-      return imageSrc;
+      return resolvedSrc;
     } finally {
       inFlightPromises.delete(cacheKey);
     }

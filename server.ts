@@ -554,6 +554,33 @@ app.all('/api/*', (req, res) => {
   });
 });
 
+// Static image serving routes for robust access across all path formats in dev and production
+const imagesDir = path.join(process.cwd(), 'src', 'assets', 'images');
+const staticImageOptions = {
+  maxAge: '1y',
+  setHeaders: (res: any) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  },
+};
+
+app.use('/src/assets/images', express.static(imagesDir, staticImageOptions));
+app.use('/assets/images', express.static(imagesDir, staticImageOptions));
+app.use('/images', express.static(imagesDir, staticImageOptions));
+
+// Direct filename resolver for images (e.g. /ms_dragon_embroidery_1787087913479.jpg or /assets/ms_dragon_embroidery_1787087913479.jpg)
+app.get(['/:filename(*.jpg)', '/:filename(*.jpeg)', '/:filename(*.png)', '/:filename(*.webp)', '/:filename(*.svg)', '/assets/:filename(*.jpg)', '/assets/:filename(*.jpeg)', '/assets/:filename(*.png)'], (req, res, next) => {
+  const filename = path.basename(req.params.filename);
+  const candidatePath = path.join(imagesDir, filename);
+  if (fs.existsSync(candidatePath)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    return res.sendFile(candidatePath);
+  }
+  next();
+});
+
 // Setup Vite middleware for development or serve dist in production
 async function setupServer() {
   if (process.env.NODE_ENV !== 'production') {

@@ -586,6 +586,20 @@ export const PORTFOLIO_PROJECTS: PortfolioItem[] = [
 
   // ================= EMBROIDERY =================
   {
+    id: 'emb-ms-dragon',
+    title: 'MS Phoenix & Imperial Dragon Oriental Embroidery Digitizing',
+    category: 'embroidery',
+    categoryLabel: 'Embroidery',
+    image: msDragonImg,
+    tag: '52,000+ Stitches Master',
+    specs: 'Multi-layer metallic gold thread blending with oriental dragon, phoenix, Mt. Fuji & pagoda',
+    client: 'MS Dragon Clan Apparel',
+    description: 'Ultra-high stitch count back embroidery combining golden dragon scales, crimson phoenix feathers, Mount Fuji summit, and Japanese pagoda architectural lines. Calibrated underlay prevents puckering on silk-blend and satin fabrics.',
+    stitchCount: '52,400 Stitches',
+    turnaround: '5 Days',
+    deliverables: ['High-Density DST / PES Files', 'Multi-Head Sequencing Sheet', 'Metallic Thread Spec Guide', 'Stitch Simulation PDF']
+  },
+  {
     id: 'emb-king-tiger-martial-arts',
     title: 'King-Tiger Martial-Arts "One School. One Family." Circular Embroidered Patch',
     category: 'embroidery',
@@ -822,20 +836,6 @@ export const PORTFOLIO_PROJECTS: PortfolioItem[] = [
     stitchCount: '48,200 Stitches',
     turnaround: '4 Days',
     deliverables: ['Tajima DST / Barudan Machine Files', 'Production Run Sheet', 'Stitch Simulation Proof', 'Direct Jacket Stitchout']
-  },
-  {
-    id: 'emb-ms-dragon',
-    title: 'MS Phoenix & Imperial Dragon Oriental Embroidery Digitizing',
-    category: 'embroidery',
-    categoryLabel: 'Embroidery',
-    image: msDragonImg,
-    tag: '52,000+ Stitches Master',
-    specs: 'Multi-layer metallic gold thread blending with oriental dragon, phoenix, Mt. Fuji & pagoda',
-    client: 'MS Dragon Clan Apparel',
-    description: 'Ultra-high stitch count back embroidery combining golden dragon scales, crimson phoenix feathers, Mount Fuji summit, and Japanese pagoda architectural lines. Calibrated underlay prevents puckering on silk-blend and satin fabrics.',
-    stitchCount: '52,400 Stitches',
-    turnaround: '5 Days',
-    deliverables: ['High-Density DST / PES Files', 'Multi-Head Sequencing Sheet', 'Metallic Thread Spec Guide', 'Stitch Simulation PDF']
   },
   {
     id: 'emb-two-bears',

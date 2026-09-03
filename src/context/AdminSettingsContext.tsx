@@ -23,6 +23,7 @@ import {
   PORTFOLIO_PROJECTS,
   PortfolioItem,
 } from '../data/content';
+import { resolvePortfolioImageUrl } from '../utils/imageResolver';
 
 // Default initial state matching original data
 const DEFAULT_BRANDING: BrandingSettings = {
@@ -374,7 +375,14 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.PORTFOLIO);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((item: any) => ({
+            ...item,
+            image: resolvePortfolioImageUrl(item.image),
+            originalImage: resolvePortfolioImageUrl(item.originalImage || item.image),
+          }));
+        }
       }
     } catch (e) {
       console.warn('Error reading portfolio from localStorage:', e);
