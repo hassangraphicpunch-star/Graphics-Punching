@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, forwardRef } from 'react';
 import { useWebsiteSettings } from '../context/AdminSettingsContext';
-import { getWatermarkedImageUrl, downloadWatermarkedImage } from '../utils/watermark';
+import { 
+  getWatermarkedImageUrl, 
+  getCachedWatermarkedUrl, 
+  downloadWatermarkedImage 
+} from '../utils/watermark';
 
 export interface WatermarkedPortfolioImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src: string;
@@ -16,7 +20,7 @@ export interface WatermarkedPortfolioImageProps extends React.ImgHTMLAttributes<
  * WatermarkedPortfolioImage ensures that:
  * 1. The image rendered in the DOM has the official watermark permanently stamped into its pixels.
  * 2. When a user right-clicks and chooses "Save Image As...", the saved file includes the watermark.
- * 3. Dragging or copying the image also copies the watermarked version.
+ * 3. Dragging, copying, or saving the image preserves the watermarked version.
  */
 export const WatermarkedPortfolioImage = forwardRef<HTMLImageElement, WatermarkedPortfolioImageProps>(
   (
@@ -35,9 +39,20 @@ export const WatermarkedPortfolioImage = forwardRef<HTMLImageElement, Watermarke
     const { settings } = useWebsiteSettings();
     const watermarkConfig = settings.watermark;
 
-    // We start with src, and swap to watermarked data URL as soon as generated
-    const [watermarkedSrc, setWatermarkedSrc] = useState<string>(src);
-    const [isWatermarking, setIsWatermarking] = useState<boolean>(true);
+    const watermarkOptions = {
+      watermarkText: watermarkConfig?.text || 'GRAPHICS PUNCHING • PROOF',
+      opacity: watermarkConfig?.opacity || 0.28,
+      placement: (watermarkConfig?.placement || 'diagonal') as 'diagonal' | 'center' | 'bottom-right' | 'tile',
+      color: watermarkConfig?.color || '#FFFFFF',
+      subtext: 'SCREEN PRINTING • EMBROIDERY • VECTOR ARTWORK',
+      websiteUrl: 'WWW.GRAPHICSPUNCHING.COM',
+    };
+
+    // Synchronously check if the watermarked version is already in memory cache
+    const initialCached = getCachedWatermarkedUrl(src, watermarkOptions);
+
+    const [watermarkedSrc, setWatermarkedSrc] = useState<string>(initialCached || src);
+    const [isWatermarking, setIsWatermarking] = useState<boolean>(!initialCached);
     const isMountedRef = useRef<boolean>(true);
 
     useEffect(() => {
@@ -49,16 +64,17 @@ export const WatermarkedPortfolioImage = forwardRef<HTMLImageElement, Watermarke
         return;
       }
 
-      let isCancelled = false;
+      const cached = getCachedWatermarkedUrl(src, watermarkOptions);
+      if (cached) {
+        setWatermarkedSrc(cached);
+        setIsWatermarking(false);
+        return;
+      }
 
-      getWatermarkedImageUrl(src, {
-        watermarkText: watermarkConfig?.text || 'GRAPHICS PUNCHING • PROOF',
-        opacity: watermarkConfig?.opacity || 0.28,
-        placement: watermarkConfig?.placement || 'diagonal',
-        color: watermarkConfig?.color || '#FFFFFF',
-        subtext: 'SCREEN PRINTING • EMBROIDERY • VECTOR ARTWORK',
-        websiteUrl: 'WWW.GRAPHICSPUNCHING.COM',
-      }).then((url) => {
+      let isCancelled = false;
+      setIsWatermarking(true);
+
+      getWatermarkedImageUrl(src, watermarkOptions).then((url) => {
         if (!isCancelled && isMountedRef.current) {
           setWatermarkedSrc(url);
           setIsWatermarking(false);
@@ -69,14 +85,14 @@ export const WatermarkedPortfolioImage = forwardRef<HTMLImageElement, Watermarke
         isCancelled = true;
         isMountedRef.current = false;
       };
-    }, [src, watermarkConfig]);
+    }, [src, watermarkConfig?.text, watermarkConfig?.opacity, watermarkConfig?.enabled, watermarkConfig?.placement]);
 
     const handleContextMenu = (e: React.MouseEvent<HTMLImageElement>) => {
-      // If the image is already watermarked, native right-click "Save Image As..." saves the watermarked image.
-      // If user right-clicked while watermarking was still loading, trigger an immediate watermarked save.
-      if (isWatermarking && watermarkConfig?.enabled !== false) {
+      // If watermarking hasn't finished baking into the src data URL yet,
+      // prevent the browser from saving the raw original file and immediately trigger the watermarked download!
+      if (isWatermarking || watermarkedSrc === src) {
         e.preventDefault();
-        downloadWatermarkedImage(src, title || alt, watermarkConfig?.text);
+        downloadWatermarkedImage(src, title || alt, watermarkConfig?.text, watermarkOptions);
       }
     };
 

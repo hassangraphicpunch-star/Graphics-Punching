@@ -4,6 +4,7 @@ import { WhyChooseUsSection } from '../components/WhyChooseUsSection';
 import { CTASection } from '../components/CTASection';
 import { ImageLightboxModal, LightboxImageItem } from '../components/ImageLightboxModal';
 import { WatermarkOverlay } from '../components/WatermarkOverlay';
+import { WatermarkedPortfolioImage } from '../components/WatermarkedPortfolioImage';
 import { 
   Sparkles, ArrowRight, ShieldCheck, Zap, Palette, Layers, 
   CheckCircle2, Clock, Star, Maximize2, Scissors, Cpu
@@ -165,10 +166,10 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenQuoteModal
               >
                 {/* Image Container with Zero Cropping and Watermark */}
                 <div className="relative aspect-[4/3] w-full flex items-center justify-center p-3 overflow-hidden bg-black/95">
-                  <img
+                  <WatermarkedPortfolioImage
                     src={project.image}
                     alt={project.title}
-                    referrerPolicy="no-referrer"
+                    title={project.title}
                     className="max-w-full max-h-full w-auto h-auto object-contain group-hover:scale-105 transition-transform duration-300 relative z-0"
                     loading="lazy"
                   />

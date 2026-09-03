@@ -3,6 +3,7 @@ import { PORTFOLIO_PROJECTS, PortfolioItem } from '../data/content';
 import { Sparkles, FileCode2, ArrowRight, Layers, ShieldCheck, Clock, CheckCircle2, Zap, ZoomIn, Maximize2 } from 'lucide-react';
 import { ImageLightboxModal, LightboxImageItem } from '../components/ImageLightboxModal';
 import { WatermarkOverlay } from '../components/WatermarkOverlay';
+import { WatermarkedPortfolioImage } from '../components/WatermarkedPortfolioImage';
 
 interface VectorFilesPageProps {
   onOpenQuoteModal: (serviceId?: string, tierId?: string, itemTitle?: string) => void;
@@ -107,10 +108,10 @@ export const VectorFilesPage: React.FC<VectorFilesPageProps> = ({ onOpenQuoteMod
               >
                 {/* Image Container with Original Aspect Ratio */}
                 <div className="relative aspect-[4/3] w-full flex items-center justify-center p-3 overflow-hidden bg-black select-none">
-                  <img
+                  <WatermarkedPortfolioImage
                     src={project.image}
                     alt={project.title}
-                    referrerPolicy="no-referrer"
+                    title={project.title}
                     className="max-w-full max-h-full w-auto h-auto object-contain group-hover:scale-105 transition-transform duration-300"
                     loading="lazy"
                   />
@@ -268,10 +269,10 @@ export const VectorFilesPage: React.FC<VectorFilesPageProps> = ({ onOpenQuoteMod
             </div>
 
             <div className="relative aspect-[4/3] bg-black rounded-xl overflow-hidden p-2 flex items-center justify-center">
-              <img
+              <WatermarkedPortfolioImage
                 src={selectedProject.image}
                 alt={selectedProject.title}
-                referrerPolicy="no-referrer"
+                title={selectedProject.title}
                 className="max-w-full max-h-full object-contain"
               />
               <WatermarkOverlay position="diagonal" opacity={0.25} />

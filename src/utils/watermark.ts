@@ -19,6 +19,25 @@ export interface WatermarkRenderOptions {
 const watermarkUrlCache = new Map<string, string>();
 const inFlightPromises = new Map<string, Promise<string>>();
 
+export function getWatermarkCacheKey(
+  imageSrc: string,
+  options: WatermarkRenderOptions = {}
+): string {
+  return `${imageSrc}__${options.watermarkText || 'default'}__${options.opacity || '0.28'}__${options.placement || 'diagonal'}`;
+}
+
+/**
+ * Synchronously retrieves a cached watermarked data URL if already generated.
+ */
+export function getCachedWatermarkedUrl(
+  imageSrc: string,
+  options: WatermarkRenderOptions = {}
+): string | null {
+  if (!imageSrc) return null;
+  const key = getWatermarkCacheKey(imageSrc, options);
+  return watermarkUrlCache.get(key) || null;
+}
+
 /**
  * Draws the official Graphics Punching watermark onto an HTML5 Canvas.
  */
@@ -126,6 +145,53 @@ export function renderWatermarkToCanvas(
 }
 
 /**
+ * Loads an image with smart CORS handling.
+ */
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const isExternal = src.startsWith('http://') || src.startsWith('https://');
+    const isSameOrigin =
+      !isExternal ||
+      (typeof window !== 'undefined' && src.startsWith(window.location.origin));
+
+    const img = new Image();
+
+    // Only apply crossOrigin if truly external, avoiding CORS cache conflicts on same-origin assets
+    if (!isSameOrigin) {
+      img.crossOrigin = 'anonymous';
+    }
+
+    img.onload = () => resolve(img);
+
+    img.onerror = () => {
+      // If failed with crossOrigin, retry once without crossOrigin
+      if (img.crossOrigin) {
+        const fallbackImg = new Image();
+        fallbackImg.onload = () => resolve(fallbackImg);
+        fallbackImg.onerror = (err) => reject(err);
+        fallbackImg.src = src;
+      } else {
+        // Try fetching as blob
+        fetch(src)
+          .then((res) => res.blob())
+          .then((blob) => {
+            const blobUrl = URL.createObjectURL(blob);
+            const blobImg = new Image();
+            blobImg.onload = () => {
+              resolve(blobImg);
+            };
+            blobImg.onerror = (err) => reject(err);
+            blobImg.src = blobUrl;
+          })
+          .catch((fetchErr) => reject(fetchErr));
+      }
+    };
+
+    img.src = src;
+  });
+}
+
+/**
  * Returns a Promise that resolves to a data URL containing the image with
  * the official watermark permanently stamped into its pixels.
  *
@@ -137,7 +203,7 @@ export async function getWatermarkedImageUrl(
 ): Promise<string> {
   if (!imageSrc) return imageSrc;
 
-  const cacheKey = `${imageSrc}__${options.watermarkText || 'default'}__${options.opacity || '0.25'}__${options.placement || 'diagonal'}`;
+  const cacheKey = getWatermarkCacheKey(imageSrc, options);
 
   if (watermarkUrlCache.has(cacheKey)) {
     return watermarkUrlCache.get(cacheKey)!;
@@ -147,37 +213,68 @@ export async function getWatermarkedImageUrl(
     return inFlightPromises.get(cacheKey)!;
   }
 
-  const promise = new Promise<string>((resolve) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        renderWatermarkToCanvas(img, canvas, options);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-        watermarkUrlCache.set(cacheKey, dataUrl);
-        inFlightPromises.delete(cacheKey);
-        resolve(dataUrl);
-      } catch (err) {
-        console.warn('Canvas watermarking export error (possibly CORS):', err);
-        inFlightPromises.delete(cacheKey);
-        // Graceful fallback to original image if export fails
-        resolve(imageSrc);
-      }
-    };
-
-    img.onerror = (err) => {
-      console.warn('Failed to load image for watermarking:', err);
+  const promise = (async () => {
+    try {
+      const img = await loadImageElement(imageSrc);
+      const canvas = document.createElement('canvas');
+      renderWatermarkToCanvas(img, canvas, options);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      watermarkUrlCache.set(cacheKey, dataUrl);
+      return dataUrl;
+    } catch (err) {
+      console.warn('Watermark generation encountered an error, falling back to original image:', err);
+      return imageSrc;
+    } finally {
       inFlightPromises.delete(cacheKey);
-      resolve(imageSrc);
-    };
-
-    img.src = imageSrc;
-  });
+    }
+  })();
 
   inFlightPromises.set(cacheKey, promise);
   return promise;
+}
+
+/**
+ * Preloads watermarked versions of multiple images in the background.
+ */
+export function preloadPortfolioWatermarks(
+  items: Array<string | { image?: string; src?: string }>,
+  options: WatermarkRenderOptions = {}
+): void {
+  if (typeof window === 'undefined') return;
+
+  const urls: string[] = items
+    .map((item) => {
+      if (typeof item === 'string') return item;
+      return item.image || item.src || '';
+    })
+    .filter((u): u is string => Boolean(u && u.length > 0));
+
+  // Preload in gentle background batches
+  const batchSize = 3;
+  let currentIndex = 0;
+
+  function processNextBatch() {
+    if (currentIndex >= urls.length) return;
+    const batch = urls.slice(currentIndex, currentIndex + batchSize);
+    currentIndex += batchSize;
+
+    Promise.all(batch.map((url) => getWatermarkedImageUrl(url, options)))
+      .catch(() => {})
+      .finally(() => {
+        if (typeof window.requestIdleCallback === 'function') {
+          window.requestIdleCallback(() => processNextBatch(), { timeout: 1000 });
+        } else {
+          setTimeout(processNextBatch, 150);
+        }
+      });
+  }
+
+  // Start initial batch after brief idle
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => processNextBatch(), { timeout: 500 });
+  } else {
+    setTimeout(processNextBatch, 100);
+  }
 }
 
 /**

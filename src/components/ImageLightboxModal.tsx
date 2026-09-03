@@ -26,9 +26,11 @@ interface ImageLightboxModalProps {
   isOpen: boolean;
   onClose: () => void;
   images: LightboxImageItem[];
-  currentIndex: number;
+  currentIndex?: number;
+  initialIndex?: number;
   onIndexChange?: (newIndex: number) => void;
   onOpenQuoteForProject?: (projectTitle: string) => void;
+  onSelectForQuote?: (projectTitle: string) => void;
 }
 
 export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
@@ -36,9 +38,32 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
   onClose,
   images,
   currentIndex,
+  initialIndex,
   onIndexChange,
   onOpenQuoteForProject,
+  onSelectForQuote,
 }) => {
+  const [internalIndex, setInternalIndex] = useState<number>(() => {
+    if (typeof currentIndex === 'number' && !isNaN(currentIndex)) return currentIndex;
+    if (typeof initialIndex === 'number' && !isNaN(initialIndex)) return initialIndex;
+    return 0;
+  });
+
+  // Keep internal index in sync when controlled or initial index changes
+  useEffect(() => {
+    if (typeof currentIndex === 'number' && !isNaN(currentIndex)) {
+      setInternalIndex(currentIndex);
+    } else if (typeof initialIndex === 'number' && !isNaN(initialIndex)) {
+      setInternalIndex(initialIndex);
+    }
+  }, [currentIndex, initialIndex, isOpen]);
+
+  // Compute safe effective index (guaranteed to be a valid non-NaN integer)
+  const rawIndex = typeof currentIndex === 'number' && !isNaN(currentIndex) ? currentIndex : internalIndex;
+  const safeIndex = images.length > 0
+    ? Math.max(0, Math.min(isNaN(rawIndex) ? 0 : Math.floor(rawIndex), images.length - 1))
+    : 0;
+
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -49,7 +74,10 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
 
-  const currentItem = images[currentIndex] || images[0];
+  const currentItem = images[safeIndex] || images[0] || {
+    src: '',
+    title: 'Project Preview',
+  };
 
   const handleDownloadImage = async () => {
     if (!currentItem || isDownloading) return;
@@ -70,7 +98,7 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
     setZoomLevel(1);
     setPanOffset({ x: 0, y: 0 });
     setDownloadSuccess(false);
-  }, [currentIndex, isOpen]);
+  }, [safeIndex, isOpen]);
 
   // Lock body scroll when lightbox is active
   useEffect(() => {
@@ -86,15 +114,17 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
 
   const handlePrev = useCallback(() => {
     if (images.length <= 1) return;
-    const newIndex = currentIndex === 0 ? images.length - 1 : currentIndex - 1;
+    const newIndex = safeIndex === 0 ? images.length - 1 : safeIndex - 1;
+    setInternalIndex(newIndex);
     onIndexChange?.(newIndex);
-  }, [currentIndex, images.length, onIndexChange]);
+  }, [safeIndex, images.length, onIndexChange]);
 
   const handleNext = useCallback(() => {
     if (images.length <= 1) return;
-    const newIndex = currentIndex === images.length - 1 ? 0 : currentIndex + 1;
+    const newIndex = safeIndex === images.length - 1 ? 0 : safeIndex + 1;
+    setInternalIndex(newIndex);
     onIndexChange?.(newIndex);
-  }, [currentIndex, images.length, onIndexChange]);
+  }, [safeIndex, images.length, onIndexChange]);
 
   const handleZoomIn = () => {
     setZoomLevel((prev) => Math.min(prev + 0.5, 4));
@@ -212,7 +242,7 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <span className="h-2 w-2 rounded-full bg-[#FFC400] animate-pulse" />
             <span className="text-[11px] sm:text-xs font-mono font-bold text-zinc-400">
-              {currentIndex + 1}/{images.length}
+              {images.length > 0 ? `${safeIndex + 1}/${images.length}` : '0/0'}
             </span>
           </div>
 
@@ -354,7 +384,7 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
           </button>
         )}
 
-        {/* The Exact Original Image (Zero Cropping, Zero Distortion, 100% Proportional Fit) */}
+        {/* The Exact Original Image Stamped with Permanent Watermark (Zero Cropping, Zero Distortion, 100% Proportional Fit) */}
         <div 
           style={{
             transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`,
@@ -362,11 +392,11 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
           }}
           className="relative max-w-full max-h-full flex items-center justify-center transition-transform duration-100 ease-out overflow-hidden rounded-lg"
         >
-          <img
+          <WatermarkedPortfolioImage
             ref={imageRef}
             src={currentItem.src}
             alt={currentItem.title}
-            referrerPolicy="no-referrer"
+            title={currentItem.title}
             style={{
               maxHeight: showMetadata ? 'calc(100vh - 190px)' : 'calc(100vh - 80px)',
               maxWidth: 'calc(100vw - 20px)',
@@ -460,13 +490,17 @@ export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({
                 )}
               </button>
 
-              {onOpenQuoteForProject && (
+              {(onOpenQuoteForProject || onSelectForQuote) && (
                 <button
                   type="button"
                   onClick={() => {
                     const title = currentItem.title;
                     onClose();
-                    onOpenQuoteForProject(title);
+                    if (onOpenQuoteForProject) {
+                      onOpenQuoteForProject(title);
+                    } else if (onSelectForQuote) {
+                      onSelectForQuote(title);
+                    }
                   }}
                   id="lightbox-quote-btn"
                   className="flex-1 sm:flex-initial bg-[#FFC400] hover:bg-[#ffcd1a] text-black font-black text-xs uppercase tracking-wider px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer min-h-[40px] group"

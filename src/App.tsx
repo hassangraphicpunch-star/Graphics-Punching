@@ -21,10 +21,21 @@ import { HowItWorksPage } from './pages/HowItWorksPage';
 import { TestimonialsPage } from './pages/TestimonialsPage';
 import { FAQPage } from './pages/FAQPage';
 import { ContactPage } from './pages/ContactPage';
+import { PORTFOLIO_PROJECTS } from './data/content';
+import { preloadPortfolioWatermarks } from './utils/watermark';
 
 function MainAppContent() {
-  const { previewMode, togglePreviewMode, isAdminAuthenticated } = useWebsiteSettings();
+  const { previewMode, togglePreviewMode, isAdminAuthenticated, settings } = useWebsiteSettings();
   const [currentPage, setCurrentPage] = useState<string>('home');
+
+  // Pre-generate watermarks into cache for instant right-click protection & lightning display
+  useEffect(() => {
+    preloadPortfolioWatermarks(PORTFOLIO_PROJECTS, {
+      watermarkText: settings.watermark?.text || 'GRAPHICS PUNCHING • PROOF',
+      opacity: settings.watermark?.opacity || 0.28,
+      placement: (settings.watermark?.placement || 'diagonal') as any,
+    });
+  }, [settings.watermark]);
 
   // Global Quote Modal State
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);

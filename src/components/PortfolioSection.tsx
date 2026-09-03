@@ -168,7 +168,13 @@ export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ onOpenQuoteM
                 )}
 
                 {/* Desktop Hover Overlay with Actions */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-black/85 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden md:flex flex-col justify-end p-5 sm:p-6 text-white z-20">
+                <div 
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    downloadWatermarkedImage(project.image, project.title);
+                  }}
+                  className="absolute inset-0 bg-gradient-to-t from-black via-black/85 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden md:flex flex-col justify-end p-5 sm:p-6 text-white z-20"
+                >
                   <div className="transform translate-y-3 group-hover:translate-y-0 transition-transform duration-300 space-y-2">
                     <span className="text-xs font-black text-[#FFC400] uppercase tracking-widest block">
                       {project.categoryLabel}
@@ -288,7 +294,15 @@ export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ onOpenQuoteM
         isOpen={isLightboxOpen}
         onClose={() => setIsLightboxOpen(false)}
         images={lightboxImages}
+        currentIndex={lightboxIndex}
         initialIndex={lightboxIndex}
+        onIndexChange={setLightboxIndex}
+        onOpenQuoteForProject={(itemTitle) => {
+          setIsLightboxOpen(false);
+          if (onOpenQuoteModalWithItem) {
+            onOpenQuoteModalWithItem(itemTitle);
+          }
+        }}
         onSelectForQuote={(itemTitle) => {
           setIsLightboxOpen(false);
           if (onOpenQuoteModalWithItem) {
