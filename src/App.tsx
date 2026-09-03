@@ -16,6 +16,7 @@ import { PortfolioPage } from './pages/PortfolioPage';
 import { VectorFilesPage } from './pages/VectorFilesPage';
 import { EmbroideryFilesPage } from './pages/EmbroideryFilesPage';
 import { ScreenPrintingFilesPage } from './pages/ScreenPrintingFilesPage';
+import { PatchDesignPage } from './pages/PatchDesignPage';
 import { AboutPage } from './pages/AboutPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { TestimonialsPage } from './pages/TestimonialsPage';
@@ -57,6 +58,7 @@ function MainAppContent() {
           'vector-files',
           'embroidery-files',
           'screen-printing-files',
+          'patch-design',
           'about', 
           'how-it-works', 
           'testimonials', 
@@ -81,6 +83,8 @@ function MainAppContent() {
         setCurrentPage('embroidery-files');
       } else if (hash === 'portfolio-screen-printing' || hash === 'screen-printing' || hash === 'screen-print') {
         setCurrentPage('screen-printing-files');
+      } else if (hash === 'patch' || hash === 'patches' || hash === 'patch-files' || hash === 'custom-patches') {
+        setCurrentPage('patch-design');
       } else {
         setCurrentPage('home');
       }
@@ -204,6 +208,13 @@ function MainAppContent() {
 
             {currentPage === 'screen-printing-files' && (
               <ScreenPrintingFilesPage
+                onOpenQuoteModal={openQuoteModal}
+                onNavigate={navigateTo}
+              />
+            )}
+
+            {currentPage === 'patch-design' && (
+              <PatchDesignPage
                 onOpenQuoteModal={openQuoteModal}
                 onNavigate={navigateTo}
               />
