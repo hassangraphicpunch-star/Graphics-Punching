@@ -193,8 +193,21 @@ app.get('/api/site/data', (req, res) => {
   });
 });
 
-// 4. Publish Live Website Updates (Called from Admin Portal)
-app.post('/api/admin/publish', (req, res) => {
+// Reusable Publish Handler supporting multiple route aliases and methods
+function handlePublishRequest(req: express.Request, res: express.Response) {
+  // If GET, return latest publication status rather than a 404
+  if (req.method === 'GET') {
+    return res.json({
+      success: true,
+      status: 'ready',
+      message: 'Publish pipeline online and active.',
+      hasPublishedData: inMemoryPublishedData !== null,
+      publishedAt: inMemoryPublishedData?.publishedAt || null,
+      version: inMemoryPublishedData?.version || 0,
+      activeClients: sseClients.size,
+    });
+  }
+
   try {
     const payload = req.body || {};
     const effectiveSettings = payload.settings || payload.data?.settings;
@@ -240,7 +253,7 @@ app.post('/api/admin/publish', (req, res) => {
       data: newPublishedData,
     });
 
-    console.log(`[CMS PUBLISH] Live website synchronized successfully at ${publishedAt} (v${currentVersion})`);
+    console.log(`[CMS PUBLISH] Live website synchronized successfully at ${publishedAt} (v${currentVersion}) via ${req.originalUrl}`);
 
     res.json({
       success: true,
@@ -250,16 +263,34 @@ app.post('/api/admin/publish', (req, res) => {
       activeClientsNotified: sseClients.size,
     });
   } catch (error: any) {
-    console.error('Error in /api/admin/publish:', error);
+    console.error('Error in publish handler:', error);
     res.status(500).json({
       success: false,
       error: error?.message || 'Server error while publishing website updates',
     });
   }
+}
+
+// 4. Publish Live Website Updates - Registered across all common endpoints and aliases
+const PUBLISH_ENDPOINTS = [
+  '/api/admin/publish',
+  '/api/publish',
+  '/api/site/publish',
+  '/api/settings/publish',
+  '/api/admin/save',
+  '/api/publish-live',
+];
+
+PUBLISH_ENDPOINTS.forEach((endpoint) => {
+  app.all(endpoint, handlePublishRequest);
 });
 
+// Also accept POST/PUT directly on /api/site/data as an intuitive CMS endpoint
+app.post('/api/site/data', handlePublishRequest);
+app.put('/api/site/data', handlePublishRequest);
+
 // 5. Submit Customer Quote Request / Contact Lead
-app.post('/api/leads/submit', (req, res) => {
+const handleLeadSubmit = (req: express.Request, res: express.Response) => {
   try {
     const leadData = req.body;
     if (!leadData.name && !leadData.fullName) {
@@ -302,10 +333,14 @@ app.post('/api/leads/submit', (req, res) => {
     console.error('Error recording lead:', err);
     res.status(500).json({ success: false, error: 'Failed to record lead' });
   }
-});
+};
+
+app.post('/api/leads/submit', handleLeadSubmit);
+app.post('/api/leads', handleLeadSubmit);
+app.post('/api/contact', handleLeadSubmit);
 
 // 6. Reset Published Data to Default Factory State
-app.post('/api/admin/reset', (req, res) => {
+const handleReset = (req: express.Request, res: express.Response) => {
   try {
     if (fs.existsSync(PUBLISHED_DATA_FILE)) {
       fs.unlinkSync(PUBLISHED_DATA_FILE);
@@ -319,12 +354,17 @@ app.post('/api/admin/reset', (req, res) => {
 
     res.json({
       success: true,
-      message: 'Published data successfully reset to factory defaults.',
+      message: 'Published database reset to default baseline configuration.',
     });
   } catch (err: any) {
-    res.status(500).json({ success: false, error: 'Failed to reset data on server' });
+    console.error('Error resetting published database:', err);
+    res.status(500).json({ success: false, error: 'Failed to reset published database' });
   }
-});
+};
+
+app.post('/api/admin/reset', handleReset);
+app.all('/api/admin/reset', handleReset);
+app.all('/api/reset', handleReset);
 
 // 7. AI Email Assistant Endpoint
 app.post('/api/gemini/email-assistant', async (req, res) => {
@@ -504,6 +544,14 @@ app.post('/api/email/send', async (req, res) => {
       error: error?.message || 'Internal server error while sending email',
     });
   }
+});
+
+// Fallback for any unmatched /api routes to prevent HTML 404 responses
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `API route ${req.method} ${req.path} not found on this server.`,
+  });
 });
 
 // Setup Vite middleware for development or serve dist in production
