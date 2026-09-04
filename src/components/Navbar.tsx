@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Menu, X, ArrowRight, ChevronDown, FileCode2, Layers, Palette, Sparkles, Grid } from 'lucide-react';
+import { Menu, X, ArrowRight, ChevronDown, FileCode2, Layers, Palette, Sparkles, Grid, Shield } from 'lucide-react';
 import { Logo } from './Logo';
 import { CONTACT_INFO } from '../data/content';
 
@@ -75,6 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     'vector-files', 
     'embroidery-files', 
     'screen-printing-files',
+    'patch-design',
     'portfolio-vector',
     'portfolio-embroidery',
     'portfolio-screen-printing'
@@ -96,6 +97,14 @@ export const Navbar: React.FC<NavbarProps> = ({
       description: 'DST/PES digitizing, jacket backs & 3D puff',
       icon: Layers,
       tag: 'Embroidery'
+    },
+    {
+      label: 'Patch Design',
+      page: 'patch-design',
+      href: '#/patch-design',
+      description: 'Custom embroidered, woven, PVC & leather patch files',
+      icon: Shield,
+      tag: 'Patches'
     },
     {
       label: 'Screen Printing Files',
@@ -475,7 +484,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span className="flex items-center gap-2">
                       <span>PORTFOLIO</span>
                       <span className="text-[9px] bg-[#FFC400]/20 text-[#FFC400] px-1.5 py-0.5 rounded font-extrabold">
-                        3 CATEGORIES
+                        4 SPECIALTIES
                       </span>
                     </span>
                     <ChevronDown className={`w-4 h-4 transition-transform ${mobilePortfolioExpanded ? 'rotate-180 text-[#FFC400]' : 'text-zinc-400'}`} />

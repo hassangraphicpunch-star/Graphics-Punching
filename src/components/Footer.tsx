@@ -142,6 +142,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
               {[
                 { label: 'Vector Files', page: 'vector-files', href: '#/vector-files' },
                 { label: 'Embroidery Files', page: 'embroidery-files', href: '#/embroidery-files' },
+                { label: 'Patch Design', page: 'patch-design', href: '#/patch-design' },
                 { label: 'Screen Printing Files', page: 'screen-printing-files', href: '#/screen-printing-files' },
                 { label: 'Vector Services', page: 'services', href: '#/services' },
                 { label: 'Digitizing Rates', page: 'pricing', href: '#/pricing' },
