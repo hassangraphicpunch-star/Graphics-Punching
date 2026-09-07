@@ -476,6 +476,447 @@ Tone: ${tone}`;
   }
 });
 
+// Helper function for intelligent chatbot responses (used when Gemini key is absent or on transient API error)
+function generateIntelligentChatbotFallback(
+  userQuery: string,
+  settings: any = {}
+): { reply: string; suggestedAction?: { type: string; label: string; url?: string } } {
+  const query = (userQuery || '').toLowerCase().trim();
+  const botName = settings.botName || 'Punchy AI';
+  const supportPhone = settings.supportPhone || '+1 (607) 205-0030';
+  const supportEmail = settings.supportEmail || 'graphicspunching264@gmail.com';
+
+  // 1. Pricing / Quote questions
+  if (
+    query.includes('price') ||
+    query.includes('pricing') ||
+    query.includes('cost') ||
+    query.includes('rate') ||
+    query.includes('how much') ||
+    query.includes('quote') ||
+    query.includes('estimate')
+  ) {
+    return {
+      reply: `Here is our transparent, flat-rate pricing breakdown at **Graphics Punching**:
+
+• **Vector Artwork Redraws**:
+  - Simple (Clean text, basic silhouettes): **$10**
+  - Medium (Multi-color emblems, gradients): **$15**
+  - Complex (Detailed illustrations, badges): **$25 - $35**
+
+• **Embroidery Digitizing**:
+  - Left Chest / Cap / Beanie: **$15 flat rate**
+  - Midsize Emblem (up to 6"): **$25 flat rate**
+  - Full Jacket Back: **$35 - $50 flat rate**
+  - All digitizing includes **Free minor revisions** & production PDF run sheet!
+
+• **Screen Printing Color Separations**:
+  - Spot Color (1-4 colors): **$15**
+  - Simulated Process / CMYK (Dark & Light shirts): **$25 - $35**
+
+• **Custom Patches**:
+  - Available in Embroidered, Woven, 3D Molded PVC, Laser-cut Leather, and Chenille. Use our interactive patch calculator on the website for exact quantity estimates!
+
+Would you like to get an instant quote or upload your artwork for review?`,
+      suggestedAction: {
+        type: 'quote',
+        label: '⚡ Request Instant Quote',
+      },
+    };
+  }
+
+  // 2. Turnaround / Delivery time
+  if (
+    query.includes('turnaround') ||
+    query.includes('time') ||
+    query.includes('how long') ||
+    query.includes('rush') ||
+    query.includes('fast') ||
+    query.includes('delivery') ||
+    query.includes('urgent') ||
+    query.includes('hours')
+  ) {
+    return {
+      reply: `At **Graphics Punching**, speed and machine reliability are our top priorities:
+
+⚡ **Standard Turnaround**: **12 to 24 Hours** for most vector redraws and digitizing jobs.
+🚀 **Rush Service**: **4 to 8 Hours** turnaround available upon request for time-sensitive shop deadlines.
+🕒 **Intake Hours**: Our digital order desk is active **24/7/365** so your morning shift in the US, Europe, or Australia is never delayed.
+
+Submit your artwork today and receive your machine-ready files by tomorrow morning!`,
+      suggestedAction: {
+        type: 'quote',
+        label: '🚀 Start Rush Project',
+      },
+    };
+  }
+
+  // 3. File Formats
+  if (
+    query.includes('format') ||
+    query.includes('dst') ||
+    query.includes('pes') ||
+    query.includes('emb') ||
+    query.includes('exp') ||
+    query.includes('svg') ||
+    query.includes('eps') ||
+    query.includes('ai') ||
+    query.includes('pdf') ||
+    query.includes('file type')
+  ) {
+    return {
+      reply: `We deliver all universal commercial production formats tailored to your exact equipment:
+
+🧵 **Embroidery Formats**:
+• **Tajima (.DST)** — Universal industry standard
+• **Brother / Babylock (.PES)**
+• **Melco (.EXP)**
+• **Barudan (.DSB / .DAT)**
+• **Wilcom Native (.EMB)** with editable stitch geometry
+• Complete **PDF Color Run Worksheet** with trim sequences, thread colors, and dimensions.
+
+🎨 **Vector Art Formats**:
+• **Adobe Illustrator (.AI)**
+• **Encapsulated PostScript (.EPS)**
+• **Scalable Vector Graphics (.SVG)**
+• **Print-Ready PDF**
+• **High-Resolution Transparent 300 DPI PNG**
+
+Do you have a specific commercial machine or cutting plotter you are preparing files for?`,
+      suggestedAction: {
+        type: 'quote',
+        label: '📁 Submit Files for Conversion',
+      },
+    };
+  }
+
+  // 4. Custom Patches & Borders
+  if (
+    query.includes('patch') ||
+    query.includes('merrow') ||
+    query.includes('border') ||
+    query.includes('velcro') ||
+    query.includes('iron on') ||
+    query.includes('pvc') ||
+    query.includes('leather') ||
+    query.includes('woven') ||
+    query.includes('chenille')
+  ) {
+    return {
+      reply: `We specialize in end-to-end **Custom Patch Design & Digitizing**:
+
+🛡️ **Patch Styles**:
+1. **Embroidered Patches**: Classic textured needlecraft with bold thread dimension.
+2. **High-Definition Woven Patches**: Ideal for micro-lettering down to 2mm that embroidery cannot render cleanly.
+3. **3D Molded PVC / Rubber**: Waterproof, tactical, and virtually indestructible.
+4. **Laser-Etched Leather / Leatherette**: Premium rustic style for caps, workwear, and beanies.
+5. **Varsity Chenille & Dye-Sublimated**: Vintage collegiate or photographic full-color emblems.
+
+✂️ **Border Styles**:
+• **Merrowed Edge**: Traditional 1/8" wrapped overlock border (best for regular shapes: circles, rectangles, shields).
+• **Laser-Cut Satin Border**: Flush precision edge for custom die-cut contours.
+
+🧲 **Backing Options**: Heat-seal (Iron-On), Tactical Hook-and-Loop (Velcro), Sew-on Twill, or Peel-and-Stick.
+
+Check out our new **Patch Design** page on the site for our interactive sizing estimator!`,
+      suggestedAction: {
+        type: 'navigate',
+        label: '🛡️ View Custom Patch Studio',
+        url: '#/patch-design',
+      },
+    };
+  }
+
+  // 5. Vector Artwork Redraws
+  if (
+    query.includes('vector') ||
+    query.includes('redraw') ||
+    query.includes('trace') ||
+    query.includes('low res') ||
+    query.includes('pixel') ||
+    query.includes('blurry') ||
+    query.includes('convert image') ||
+    query.includes('bitmap')
+  ) {
+    return {
+      reply: `Need to transform a blurry, low-resolution JPG, PNG, or photo into crisp vector lines?
+
+✨ **Why Graphics Punching Vector Redraws Excel**:
+• **100% Manual Pen-Tool Craft**: We never use cheap automated auto-tracing filters that leave jagged nodes or blurry corners.
+• **Infinite Scalability**: Scale your logo from a business card to a highway billboard with zero quality loss.
+• **Plotter & Cutter Friendly**: Clean closed curves and minimal node counts, optimized for vinyl plotters, laser engravers, DTF, and screen print films.
+• **Turnaround**: Standard 12-24 hours (4-8h rush available).
+• **Pricing**: Flat $10 simple, $15 medium, $25-$35 complex.
+
+Send over your low-resolution file and we'll deliver clean vectors within hours!`,
+      suggestedAction: {
+        type: 'quote',
+        label: '🎨 Redraw My Vector Logo',
+      },
+    };
+  }
+
+  // 6. Embroidery Digitizing & Stitch Quality
+  if (
+    query.includes('embroidery') ||
+    query.includes('digitiz') ||
+    query.includes('stitch') ||
+    query.includes('thread') ||
+    query.includes('puckering') ||
+    query.includes('hat') ||
+    query.includes('cap') ||
+    query.includes('3d puff')
+  ) {
+    return {
+      reply: `Our digitizers have decades of hands-on commercial embroidery experience:
+
+🧵 **Precision Engineering**:
+• **Push & Pull Compensation**: Calibrated specifically for your target fabric (piqué polos, performance fleece, twill, or structured caps).
+• **Underlay Sequencing**: Stable tatami, edge run, and zigzag underlays to eliminate puckering and thread breaks.
+• **Center-Out & Bottom-Up Cap Digitizing**: Digitized specifically for 270° cap frames to prevent seam distortion.
+• **3D Foam Puff**: Precision capping stitches and automatic cut-through density for high-impact raised 3D embroidery.
+• **Formats**: Tajima DST, PES, EXP, EMB with complete color sequence sheets.
+
+Every file is test-sewn in software to ensure smooth, high-speed runnability with minimal trims!`,
+      suggestedAction: {
+        type: 'quote',
+        label: '🧵 Get Digitizing Quote',
+      },
+    };
+  }
+
+  // 7. Social Links
+  if (
+    query.includes('social') ||
+    query.includes('facebook') ||
+    query.includes('instagram') ||
+    query.includes('pinterest') ||
+    query.includes('follow')
+  ) {
+    return {
+      reply: `Connect with **Graphics Punching** on our official social media channels:
+
+📘 **Facebook**: [facebook.com/profile.php?id=61593649506118](https://www.facebook.com/profile.php?id=61593649506118)
+📸 **Instagram**: [@graphicspunching](https://www.instagram.com/graphicspunching/)
+📌 **Pinterest**: [@graphicspunching](https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777)
+🌐 **Official Website**: [www.graphicspunching.com](https://www.graphicspunching.com)
+
+Follow us to check out our daily production sewouts, vector art redraw showcases, and embroidery tips!`,
+    };
+  }
+
+  // 8. Contact / Human Support
+  if (
+    query.includes('contact') ||
+    query.includes('phone') ||
+    query.includes('email') ||
+    query.includes('human') ||
+    query.includes('call') ||
+    query.includes('talk') ||
+    query.includes('support') ||
+    query.includes('address') ||
+    query.includes('location')
+  ) {
+    return {
+      reply: `You can reach our live production and support specialists anytime:
+
+📞 **Direct Phone / WhatsApp**: **${supportPhone}**
+✉️ **Direct Email**: **${supportEmail}**
+🌐 **Official Website**: **https://www.graphicspunching.com**
+⏰ **Operating Hours**: Mon - Fri: 8:00 AM - 7:00 PM EST | **24/7 Digital Intake & Support**
+
+You can also submit an instant quote request on our website and an artwork manager will review your files immediately!`,
+      suggestedAction: {
+        type: 'contact',
+        label: '📞 Contact Us Now',
+      },
+    };
+  }
+
+  // 9. Revisions & Guarantees
+  if (
+    query.includes('revision') ||
+    query.includes('guarantee') ||
+    query.includes('edit') ||
+    query.includes('fix') ||
+    query.includes('satisfaction') ||
+    query.includes('sample') ||
+    query.includes('money back')
+  ) {
+    return {
+      reply: `**Our 100% Quality & Runnability Guarantee**:
+
+• **Free Minor Revisions**: If you need color sequence adjustments, stitch density tweaks, slight resizing (within 10-15%), or format conversions, we handle them at **zero extra charge**.
+• **Machine Compatibility Guarantee**: We guarantee our DST and PES files will run smoothly on your multi-needle or single-needle embroidery equipment without birdnesting or thread breakage.
+• **Vector Precision Guarantee**: Crisp mathematically exact vector paths ready for cut vinyl, DTF, or screen printing screen burning.
+
+We aren't finished until your project looks stunning on fabric or print!`,
+      suggestedAction: {
+        type: 'quote',
+        label: '⚡ Start Your Project Risk-Free',
+      },
+    };
+  }
+
+  // Default fallback
+  return {
+    reply: `Hello! I'm **${botName}**, your virtual production assistant at **Graphics Punching**.
+
+We are an international digitizing and artwork studio specializing in:
+1. **Embroidery Digitizing** (Left chest $15, caps, jacket backs, 3D puff in DST/PES/EXP/EMB)
+2. **Manual Vector Redraws** ($10-$15 flat rates in AI, EPS, SVG, PDF)
+3. **Custom Patch Design** (Embroidered, Woven, 3D PVC, Leather, Chenille)
+4. **Screen Printing Color Separations** (Spot color, Simulated Process, CMYK)
+
+How can I assist you with your project today? Feel free to ask about pricing, turnarounds, file formats, or request a quick quote!`,
+    suggestedAction: {
+      type: 'quote',
+      label: '⚡ Get Instant Quote',
+    },
+  };
+}
+
+// 7b. AI Chatbot Assistant Endpoint (Powered by Gemini with Domain Knowledge & Intelligent Fallback)
+app.post(['/api/gemini/chat', '/api/chatbot/message'], async (req, res) => {
+  try {
+    const { messages = [], settings = {}, context = {} } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ success: false, error: 'Messages array is required.' });
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    const userQuery = lastMessage?.content || lastMessage?.text || '';
+
+    if (!userQuery.trim()) {
+      return res.status(400).json({ success: false, error: 'User message cannot be empty.' });
+    }
+
+    const botName = settings.botName || 'Punchy AI';
+    const botRole = settings.botRole || 'Graphics Punching Virtual Assistant';
+    const tone = settings.tone || 'friendly';
+    const customKnowledge = settings.customKnowledge || '';
+    const supportEmail = settings.supportEmail || 'graphicspunching264@gmail.com';
+    const supportPhone = settings.supportPhone || '+1 (607) 205-0030';
+
+    // Check if Gemini API Key is present
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      // Return intelligent fallback immediately
+      const fallback = generateIntelligentChatbotFallback(userQuery, settings);
+      return res.json({
+        success: true,
+        reply: fallback.reply,
+        suggestedAction: fallback.suggestedAction,
+        modelUsed: 'offline-intelligent-knowledge-engine',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    // Try Gemini AI with domain system instructions
+    try {
+      const ai = getGeminiClient();
+
+      const systemInstruction = `You are "${botName}", the ${botRole} for "Graphics Punching" (www.graphicspunching.com).
+Your mission is to provide accurate, welcoming, helpful, and concise assistance to apparel decorators, screen printers, embroidery shops, businesses, and designers.
+
+Company Core Capabilities:
+1. Embroidery Digitizing:
+   - Formats: Tajima (.DST), Brother (.PES), Melco (.EXP), Barudan (.DSB), Wilcom (.EMB), plus PDF Color Run Sheets.
+   - Pricing: Flat $15 for Left Chest / Cap / Beanie; $25 for mid-sized emblems; $35-$50 for full jacket back.
+   - Quality: Production-tested, precise pull/push compensation, stable underlays, center-out cap digitizing, 3D foam puff expertise.
+   - Free minor revisions on all digitizing until customer is 100% satisfied.
+
+2. Vector Art Redraw:
+   - 100% manual redraws with Adobe Illustrator Pen tool (NEVER automatic live-tracing).
+   - Formats: AI, EPS, SVG, PDF, high-res 300 DPI PNG.
+   - Pricing: Simple $10, Medium $15, Complex $25-$35.
+   - Ready for vinyl cutters, laser engravers, DTF, DTG, and screen printing film output.
+
+3. Custom Patch Design & Digitizing:
+   - Varieties: Embroidered Patches, High-Definition Woven Patches (for tiny 2mm text), 3D Molded PVC/Rubber, Laser-Etched Leather, Varsity Chenille, Dye-Sublimation.
+   - Borders: Merrowed 1/8" overlock edge vs Laser-cut satin edge.
+   - Backings: Heat-seal (Iron-on), Tactical Hook-and-Loop (Velcro), Sew-on twill, Peel-and-stick.
+
+4. Screen Printing Color Separation:
+   - Spot Color, Simulated Process (4-8 colors), CMYK, Index separation, Underbase white with vector choke, registration marks.
+
+Turnaround & Contact Details:
+- Standard Turnaround: 12-24 hours.
+- Rush Turnaround: 4-8 hours available upon request.
+- Phone / WhatsApp: ${supportPhone}
+- Email: ${supportEmail}
+- Official Website: https://www.graphicspunching.com
+- Social Links:
+  * Facebook: https://www.facebook.com/profile.php?id=61593649506118
+  * Instagram: https://www.instagram.com/graphicspunching/
+  * Pinterest: https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777
+
+Admin Custom Knowledge / Instructions:
+${customKnowledge ? `\n--- ADMIN CUSTOM INSTRUCTIONS ---\n${customKnowledge}\n----------------------------------\n` : ''}
+
+Response Rules:
+- Tone: ${tone} (welcoming, highly competent, professional, respectful).
+- Keep responses scannable, using clear bullet points and bold highlights for pricing, formats, or turnarounds.
+- If the user asks about starting an order, prices, or requests a quote, invite them to submit an instant quote through the website or contact support.
+- If asked about social media, provide the exact official links above.
+- Do NOT make up services that Graphics Punching does not offer (we do not sell raw machinery or blank garments directly; we supply production digitizing, vector redraws, patch design, and film separations).`;
+
+      // Build message sequence for Gemini
+      // Format history: user and model turns
+      const contents = messages.slice(-10).map((m: any) => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content || m.text || '' }],
+      }));
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents,
+        config: {
+          systemInstruction,
+          temperature: 0.7,
+        },
+      });
+
+      const replyText = response.text || '';
+
+      // Determine if a suggested action button should accompany the reply
+      let suggestedAction: any = undefined;
+      const lowerReply = (replyText + ' ' + userQuery).toLowerCase();
+      if (lowerReply.includes('quote') || lowerReply.includes('price') || lowerReply.includes('pricing') || lowerReply.includes('start your project') || lowerReply.includes('upload')) {
+        suggestedAction = { type: 'quote', label: '⚡ Get Instant Quote' };
+      } else if (lowerReply.includes('patch')) {
+        suggestedAction = { type: 'navigate', label: '🛡️ View Patch Studio', url: '#/patch-design' };
+      } else if (lowerReply.includes('phone') || lowerReply.includes('call') || lowerReply.includes('contact')) {
+        suggestedAction = { type: 'contact', label: '📞 Contact Support' };
+      }
+
+      return res.json({
+        success: true,
+        reply: replyText,
+        suggestedAction,
+        modelUsed: 'gemini-3.8-flash',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (geminiError: any) {
+      console.warn('Gemini API call failed, using intelligent fallback:', geminiError?.message || geminiError);
+      const fallback = generateIntelligentChatbotFallback(userQuery, settings);
+      return res.json({
+        success: true,
+        reply: fallback.reply,
+        suggestedAction: fallback.suggestedAction,
+        modelUsed: 'fallback-intelligent-knowledge-engine',
+        note: 'Switched to domain knowledge fallback',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch (err: any) {
+    console.error('Fatal error in chat endpoint:', err);
+    res.status(500).json({ success: false, error: err?.message || 'Server error processing chat message' });
+  }
+});
+
 // 8. Email Dispatch Endpoint (Connected Gmail / Mail Service Integration)
 app.post('/api/email/send', async (req, res) => {
   try {

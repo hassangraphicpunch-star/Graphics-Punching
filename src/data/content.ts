@@ -416,7 +416,7 @@ export const CONTACT_INFO = {
   workingHours: 'Mon - Fri: 8:00 AM - 7:00 PM EST | 24/7 Digital Support',
   social: {
     facebook: 'https://www.facebook.com/profile.php?id=61593649506118',
-    instagram: 'https://instagram.com',
+    instagram: 'https://www.instagram.com/graphicspunching/',
     pinterest: 'https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777',
     website: 'https://www.graphicspunching.com',
   }

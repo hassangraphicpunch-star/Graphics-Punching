@@ -3,6 +3,7 @@ import { TopContactBar } from './components/TopContactBar';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { QuoteModal } from './components/QuoteModal';
+import { AIChatbot } from './components/AIChatbot';
 import { SEOHead } from './components/SEOHead';
 import { AdminPortal } from './components/AdminPortal';
 import { AdminSettingsProvider, useWebsiteSettings } from './context/AdminSettingsContext';
@@ -265,6 +266,12 @@ function MainAppContent() {
         initialService={modalService}
         initialTier={modalTier}
         initialItem={modalItem}
+      />
+
+      {/* 6. AI PRODUCTION ASSISTANT CHATBOT */}
+      <AIChatbot
+        onOpenQuoteModal={openQuoteModal}
+        onNavigate={navigateTo}
       />
     </div>
   );

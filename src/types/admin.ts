@@ -177,6 +177,24 @@ export interface EmailLog {
   }>;
 }
 
+export interface ChatbotSettings {
+  enabled: boolean;
+  botName: string;
+  botRole: string;
+  welcomeMessage: string;
+  placeholderText: string;
+  quickPrompts: string[];
+  customKnowledge: string;
+  tone: 'friendly' | 'professional' | 'expert';
+  primaryColor: string;
+  showAvatar: boolean;
+  position: 'bottom-right' | 'bottom-left';
+  supportEmail: string;
+  supportPhone: string;
+  autoOpenDelaySeconds: number;
+  enableInstantQuoteShortcut: boolean;
+}
+
 export interface WebsiteSettings {
   branding: BrandingSettings;
   homepage: HomepageSettings;
@@ -190,4 +208,6 @@ export interface WebsiteSettings {
   seo: Record<string, PageSEOSetting>;
   services: ServiceItem[];
   pricingPackages: ServicePackage[];
+  chatbot: ChatbotSettings;
 }
+

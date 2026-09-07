@@ -88,6 +88,17 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                   <Mail className="w-4 h-4" />
                 </a>
               )}
+              {settings.social.website && (
+                <a
+                  href={settings.social.website.startsWith('http') ? settings.social.website : `https://${settings.social.website}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Official Website"
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 hover:text-black hover:bg-[#FFC400] hover:border-[#FFC400] transition-all min-h-[36px] min-w-[36px]"
+                >
+                  <Globe className="w-4 h-4" />
+                </a>
+              )}
             </div>
 
             {/* Trademark sample notice */}

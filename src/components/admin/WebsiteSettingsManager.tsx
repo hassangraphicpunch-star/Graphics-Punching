@@ -38,6 +38,8 @@ import {
   Globe,
   Radio,
   Check,
+  Bot,
+  MessageSquare,
 } from 'lucide-react';
 import { useWebsiteSettings } from '../../context/AdminSettingsContext';
 import { EditablePortfolioItem, NavigationMenuItem } from '../../types/admin';
@@ -67,6 +69,7 @@ export const WebsiteSettingsManager: React.FC = () => {
     updateSEO,
     updateServices,
     updatePricingPackages,
+    updateChatbotSettings,
     addPortfolioItem,
     editPortfolioItem,
     deletePortfolioItem,
@@ -88,6 +91,7 @@ export const WebsiteSettingsManager: React.FC = () => {
     | 'social'
     | 'services'
     | 'portfolio'
+    | 'chatbot'
     | 'watermark'
     | 'navigation'
     | 'seo'
@@ -284,6 +288,7 @@ export const WebsiteSettingsManager: React.FC = () => {
             { id: 'social', label: 'Social Media Links', icon: Share2 },
             { id: 'services', label: 'Services & Pricing', icon: DollarSign },
             { id: 'portfolio', label: 'Portfolio Manager', icon: ImageIcon, badge: `${portfolioItems.length}` },
+            { id: 'chatbot', label: 'AI Chatbot Assistant', icon: Bot, badge: settings.chatbot?.enabled ? 'LIVE' : 'OFF' },
             { id: 'watermark', label: 'Image Watermarks', icon: Shield },
             { id: 'navigation', label: 'Navigation Menu', icon: MenuIcon },
             { id: 'seo', label: 'SEO & Meta Tags', icon: Search },
@@ -922,6 +927,32 @@ export const WebsiteSettingsManager: React.FC = () => {
                     className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs"
                   />
                 </div>
+
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase text-zinc-400">
+                      Official Website Address
+                    </label>
+                    <a
+                      href={settings.social.website}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-[#FFC400] hover:underline flex items-center gap-1"
+                    >
+                      <span>Visit Site</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <input
+                    type="url"
+                    value={settings.social.website}
+                    onChange={(e) => updateSocial({ website: e.target.value })}
+                    className="w-full bg-zinc-950 border border-zinc-800 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-zinc-400 mt-1">
+                    Primary Domain: <code>https://www.graphicspunching.com</code>
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -1155,6 +1186,370 @@ export const WebsiteSettingsManager: React.FC = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* 7b. AI CHATBOT ASSISTANT MANAGEMENT */}
+          {activeTab === 'chatbot' && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="border-b border-zinc-800 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 rounded-md bg-[#FFC400]/15 text-[#FFC400] border border-[#FFC400]/30 text-[10px] font-black uppercase tracking-wider">
+                      Gemini 3.8 Flash AI
+                    </span>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                        settings.chatbot?.enabled
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-zinc-800 text-zinc-400'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${settings.chatbot?.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'}`} />
+                      {settings.chatbot?.enabled ? 'Chatbot Active Online' : 'Chatbot Disabled'}
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-display font-black text-white uppercase mt-1">
+                    AI Chatbot Assistant Management
+                  </h3>
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Configure real-time customer assistance, bot persona, welcome greetings, knowledge base, and availability.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateChatbotSettings({ enabled: !settings.chatbot?.enabled });
+                      triggerSaveNotification(
+                        settings.chatbot?.enabled ? 'Chatbot disabled on website.' : 'Chatbot enabled on website!'
+                      );
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      settings.chatbot?.enabled
+                        ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-white'
+                    }`}
+                  >
+                    {settings.chatbot?.enabled ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Enabled on Website</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                        <span>Click to Enable</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Master Status & Personality Card */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-[#FFC400] flex items-center gap-1.5">
+                    <Bot className="w-4 h-4" />
+                    <span>Bot Persona &amp; Identity</span>
+                  </h4>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                      Assistant Display Name
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.chatbot?.botName || ''}
+                      onChange={(e) => updateChatbotSettings({ botName: e.target.value })}
+                      placeholder="e.g. Punchy AI"
+                      className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                      Role / Subtitle Description
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.chatbot?.botRole || ''}
+                      onChange={(e) => updateChatbotSettings({ botRole: e.target.value })}
+                      placeholder="e.g. Graphics Punching Virtual Assistant"
+                      className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                        Tone of Voice
+                      </label>
+                      <select
+                        value={settings.chatbot?.tone || 'friendly'}
+                        onChange={(e) => updateChatbotSettings({ tone: e.target.value as any })}
+                        className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3 py-2 rounded-xl text-xs"
+                      >
+                        <option value="friendly">Friendly &amp; Welcoming</option>
+                        <option value="professional">Professional &amp; Polished</option>
+                        <option value="technical">Technical Production Specialist</option>
+                        <option value="concise">Concise &amp; Fast</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                        Screen Placement
+                      </label>
+                      <select
+                        value={settings.chatbot?.position || 'bottom-right'}
+                        onChange={(e) => updateChatbotSettings({ position: e.target.value as any })}
+                        className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3 py-2 rounded-xl text-xs"
+                      >
+                        <option value="bottom-right">Bottom Right Corner</option>
+                        <option value="bottom-left">Bottom Left Corner</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-800/80 space-y-2.5">
+                    <label className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/60 border border-zinc-800 cursor-pointer">
+                      <span className="text-xs text-zinc-300 font-medium">Show Bot Avatar in Messages</span>
+                      <input
+                        type="checkbox"
+                        checked={settings.chatbot?.showAvatar !== false}
+                        onChange={(e) => updateChatbotSettings({ showAvatar: e.target.checked })}
+                        className="w-4 h-4 accent-[#FFC400] rounded"
+                      />
+                    </label>
+
+                    <label className="flex items-center justify-between p-2 rounded-lg bg-zinc-900/60 border border-zinc-800 cursor-pointer">
+                      <span className="text-xs text-zinc-300 font-medium">Header "Get Quote" Fast Action Button</span>
+                      <input
+                        type="checkbox"
+                        checked={settings.chatbot?.enableInstantQuoteShortcut !== false}
+                        onChange={(e) => updateChatbotSettings({ enableInstantQuoteShortcut: e.target.checked })}
+                        className="w-4 h-4 accent-[#FFC400] rounded"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* Welcome Message & Interaction Settings */}
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-4">
+                  <h4 className="text-xs font-black uppercase text-[#FFC400] flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>Greeting &amp; User Flow</span>
+                  </h4>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                      Welcome Message (First Bot Greeting)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={settings.chatbot?.welcomeMessage || ''}
+                      onChange={(e) => updateChatbotSettings({ welcomeMessage: e.target.value })}
+                      placeholder="Greeting sent when customer opens chat..."
+                      className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white p-3 rounded-xl text-xs leading-relaxed"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1">
+                      Customers see this instantly upon expanding the chat bubble.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                      Chat Input Box Placeholder
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.chatbot?.placeholderText || ''}
+                      onChange={(e) => updateChatbotSettings({ placeholderText: e.target.value })}
+                      placeholder="e.g. Ask about pricing, turnarounds, DST/PES files..."
+                      className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold uppercase text-zinc-400">
+                        Auto-Open Popup Timer
+                      </label>
+                      <span className="text-xs font-mono font-bold text-[#FFC400]">
+                        {settings.chatbot?.autoOpenDelaySeconds === 0
+                          ? 'Disabled (Click only)'
+                          : `${settings.chatbot?.autoOpenDelaySeconds} seconds`}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={60}
+                      step={5}
+                      value={settings.chatbot?.autoOpenDelaySeconds || 0}
+                      onChange={(e) =>
+                        updateChatbotSettings({ autoOpenDelaySeconds: parseInt(e.target.value, 10) })
+                      }
+                      className="w-full accent-[#FFC400]"
+                    />
+                    <div className="flex justify-between text-[10px] text-zinc-500 font-mono mt-0.5">
+                      <span>Off (0s)</span>
+                      <span>15s</span>
+                      <span>30s</span>
+                      <span>60s</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-zinc-800/80">
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-zinc-400 mb-1">
+                        Support Email Override
+                      </label>
+                      <input
+                        type="email"
+                        value={settings.chatbot?.supportEmail || ''}
+                        onChange={(e) => updateChatbotSettings({ supportEmail: e.target.value })}
+                        placeholder={settings.contact.email}
+                        className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3 py-2 rounded-xl text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase text-zinc-400 mb-1">
+                        Support Phone Override
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.chatbot?.supportPhone || ''}
+                        onChange={(e) => updateChatbotSettings({ supportPhone: e.target.value })}
+                        placeholder={settings.contact.phone}
+                        className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3 py-2 rounded-xl text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom Knowledge Base & Domain Content */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black uppercase text-white flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-[#FFC400]" />
+                      <span>Custom Knowledge Base &amp; System Rules</span>
+                    </h4>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Feed domain specifics, rush policies, special discount rules, and equipment notes directly to the AI.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateChatbotSettings({
+                        customKnowledge: `• Business Identity: Graphics Punching (world-class digitizing & vector redraw studio).
+• Core Services:
+  - Vector Artwork Redraws: Simple ($10), Medium ($15), Complex ($25-$35) in AI, EPS, SVG, PDF.
+  - Embroidery Digitizing: Left Chest & Caps ($15 flat), Midsize ($25), Full Back ($35-$50) in DST, PES, EXP, EMB.
+  - Custom Patches: Embroidered, Woven (micro-details), 3D PVC rubber, Laser-etched leather, Chenille.
+  - Screen Printing Separations: Spot Color ($15), Simulated Process & CMYK ($25-$35).
+• Speed: Standard 12-24 hours turnaround; 4-8 hours rush priority. 24/7 digital intake.
+• Free Revisions: 100% free until sewout runs flawlessly without thread breaks.
+• Official Contacts: Phone: +1 (607) 205-0030 | Email: graphicspunching264@gmail.com | Web: www.graphicspunching.com
+• Socials: Facebook (https://www.facebook.com/profile.php?id=61593649506118), Instagram (@graphicspunching), Pinterest (@graphicspunching).`,
+                      });
+                      triggerSaveNotification('Reset custom knowledge to production baseline!');
+                    }}
+                    className="text-[11px] text-[#FFC400] hover:underline flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Reset to Recommended Baseline</span>
+                  </button>
+                </div>
+
+                <div>
+                  <textarea
+                    rows={8}
+                    value={settings.chatbot?.customKnowledge || ''}
+                    onChange={(e) => updateChatbotSettings({ customKnowledge: e.target.value })}
+                    placeholder="Enter custom business rules, equipment compatibility notes, FAQ points, or current promotions..."
+                    className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white p-3.5 rounded-xl text-xs sm:text-sm font-mono leading-relaxed"
+                  />
+                  <div className="mt-2 text-zinc-400 text-[11px] flex items-center justify-between">
+                    <span>💡 Tip: Write bullet points for rates, machinery guidelines, or turnaround notices.</span>
+                    <span className="font-mono text-zinc-500">
+                      {(settings.chatbot?.customKnowledge || '').length} characters
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Starter Prompts Editor */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-4">
+                <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black uppercase text-white flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-[#FFC400]" />
+                      <span>Quick Starter Prompt Chips</span>
+                    </h4>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Clickable chips shown to users beneath the greeting to inspire instant questions.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const current = settings.chatbot?.quickPrompts || [];
+                      updateChatbotSettings({
+                        quickPrompts: [...current, 'What are your turnaround times and rush rates?'],
+                      });
+                      triggerSaveNotification('Added new prompt suggestion chip!');
+                    }}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#FFC400] text-black text-xs font-bold hover:bg-[#ffcf33] active:scale-95 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Prompt</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {(settings.chatbot?.quickPrompts || []).map((prompt, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 p-2.5 rounded-xl bg-zinc-900 border border-zinc-800"
+                    >
+                      <span className="text-zinc-500 font-mono text-xs w-6 text-center">
+                        #{idx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={prompt}
+                        onChange={(e) => {
+                          const updated = [...(settings.chatbot?.quickPrompts || [])];
+                          updated[idx] = e.target.value;
+                          updateChatbotSettings({ quickPrompts: updated });
+                        }}
+                        className="flex-1 bg-transparent text-white text-xs sm:text-sm focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = (settings.chatbot?.quickPrompts || []).filter(
+                            (_, pIdx) => pIdx !== idx
+                          );
+                          updateChatbotSettings({ quickPrompts: updated });
+                          triggerSaveNotification('Prompt removed');
+                        }}
+                        className="p-1 text-zinc-500 hover:text-red-400 transition-colors"
+                        title="Delete Prompt"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}

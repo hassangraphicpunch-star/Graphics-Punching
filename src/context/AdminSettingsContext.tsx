@@ -15,6 +15,7 @@ import {
   NavigationMenuItem,
   FooterSettings,
   PageSEOSetting,
+  ChatbotSettings,
 } from '../types/admin';
 import {
   CONTACT_INFO,
@@ -79,15 +80,45 @@ const DEFAULT_EMAIL_SETTINGS: EmailSystemSettings = {
 };
 
 const DEFAULT_SOCIAL: SocialLinksSettings = {
-  facebook: CONTACT_INFO.social.facebook || 'https://www.facebook.com/profile.php?id=61593649506118',
-  instagram: 'https://instagram.com',
-  pinterest: 'https://pinterest.com',
-  linkedin: 'https://linkedin.com',
-  youtube: 'https://youtube.com',
-  tiktok: 'https://tiktok.com',
-  twitter: 'https://x.com',
-  whatsapp: '+16072050030',
+  facebook: 'https://www.facebook.com/profile.php?id=61593649506118',
+  instagram: 'https://www.instagram.com/graphicspunching/',
+  pinterest: 'https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777',
   website: 'https://www.graphicspunching.com',
+  linkedin: '',
+  youtube: '',
+  tiktok: '',
+  twitter: '',
+  whatsapp: '+16072050030',
+};
+
+const DEFAULT_CHATBOT: ChatbotSettings = {
+  enabled: true,
+  botName: 'Punchy AI',
+  botRole: 'Graphics Punching Virtual Assistant',
+  welcomeMessage: 'Hi there! 👋 Welcome to Graphics Punching. How can I help with your embroidery digitizing, vector redraw, custom patches, or screen printing project today?',
+  placeholderText: 'Ask about pricing, turnarounds, file formats (DST/PES), or patch options...',
+  quickPrompts: [
+    'What are your digitizing turnaround times & rates?',
+    'Which file formats do you deliver (DST, EMB, PES)?',
+    'How do custom patch orders and borders work?',
+    'Can you clean up a low-res image into high-res vector?',
+  ],
+  customKnowledge: `Graphics Punching specializes in professional vector art redraws, production-tested embroidery digitizing, screen printing color separations, and custom patch design.
+- Digitizing: $15 standard left chest / cap, $25 medium emblem, $35-$50 jacket back. 12-24h standard delivery, 4-8h rush available. Deliverables include Tajima DST, Brother PES, Melco EXP, Barudan DSB, and Wilcom EMB with PDF color run worksheet.
+- Vector Redraw: $10 simple, $15 medium, $25-$35 complex. AI, EPS, SVG, PDF, high-res PNG formats. Zero auto-trace; 100% precision pen-tool redraws.
+- Screen Printing: Spot color separation, simulated process (4-8 colors), CMYK process, vector underbase white, registration marks.
+- Custom Patches: Embroidered, woven, 3D molded PVC, leatherette, chenille, dye-sub. Merrowed overlock borders (1/8") and laser-cut / hot-cut satin borders. Heat-seal iron-on, velcro (hook & loop), and sew-on backings.
+- Contact: Phone +1 (607) 205-0030, Email graphicspunching264@gmail.com, Web: www.graphicspunching.com
+- Social Links: Facebook (https://www.facebook.com/profile.php?id=61593649506118), Instagram (https://www.instagram.com/graphicspunching/), Pinterest (https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777).
+- Revisions & Guarantees: Free unlimited minor revisions until the sewout or vector cuts cleanly on your equipment.`,
+  tone: 'friendly',
+  primaryColor: '#FFC400',
+  showAvatar: true,
+  position: 'bottom-right',
+  supportEmail: 'graphicspunching264@gmail.com',
+  supportPhone: '+1 (607) 205-0030',
+  autoOpenDelaySeconds: 0,
+  enableInstantQuoteShortcut: true,
 };
 
 const DEFAULT_WATERMARK: WatermarkConfig = {
@@ -285,6 +316,7 @@ interface AdminSettingsContextType {
   updateSEO: (pageKey: string, seo: Partial<PageSEOSetting>) => void;
   updateServices: (services: any[]) => void;
   updatePricingPackages: (packages: any[]) => void;
+  updateChatbotSettings: (chatbot: Partial<ChatbotSettings>) => void;
 
   // Portfolio Management
   addPortfolioItem: (item: Omit<EditablePortfolioItem, 'id'>) => EditablePortfolioItem;
@@ -336,16 +368,33 @@ const DEFAULT_SETTINGS: WebsiteSettings = {
   seo: DEFAULT_SEO,
   services: SERVICES,
   pricingPackages: SERVICE_PACKAGES,
+  chatbot: DEFAULT_CHATBOT,
 };
 
 export const sanitizeSettings = (raw: any): WebsiteSettings => {
   if (!raw || typeof raw !== 'object') return DEFAULT_SETTINGS;
+  const rawSocial = raw.social || {};
+  const social: SocialLinksSettings = {
+    ...DEFAULT_SOCIAL,
+    ...rawSocial,
+    facebook: rawSocial.facebook || DEFAULT_SOCIAL.facebook,
+    instagram:
+      rawSocial.instagram && rawSocial.instagram !== 'https://instagram.com'
+        ? rawSocial.instagram
+        : DEFAULT_SOCIAL.instagram,
+    pinterest:
+      rawSocial.pinterest && rawSocial.pinterest !== 'https://pinterest.com'
+        ? rawSocial.pinterest
+        : DEFAULT_SOCIAL.pinterest,
+    website: rawSocial.website || DEFAULT_SOCIAL.website,
+  };
+
   return {
     branding: { ...DEFAULT_BRANDING, ...(raw.branding || {}) },
     homepage: { ...DEFAULT_HOMEPAGE, ...(raw.homepage || {}) },
     contact: { ...DEFAULT_CONTACT, ...(raw.contact || {}) },
     emailSettings: { ...DEFAULT_EMAIL_SETTINGS, ...(raw.emailSettings || {}) },
-    social: { ...DEFAULT_SOCIAL, ...(raw.social || {}) },
+    social,
     watermark: { ...DEFAULT_WATERMARK, ...(raw.watermark || {}) },
     sections: { ...DEFAULT_SECTIONS, ...(raw.sections || {}) },
     navigation: Array.isArray(raw.navigation) && raw.navigation.length > 0 ? raw.navigation : DEFAULT_NAVIGATION,
@@ -353,6 +402,7 @@ export const sanitizeSettings = (raw: any): WebsiteSettings => {
     seo: { ...DEFAULT_SEO, ...(raw.seo || {}) },
     services: Array.isArray(raw.services) && raw.services.length > 0 ? raw.services : SERVICES,
     pricingPackages: Array.isArray(raw.pricingPackages) && raw.pricingPackages.length > 0 ? raw.pricingPackages : SERVICE_PACKAGES,
+    chatbot: { ...DEFAULT_CHATBOT, ...(raw.chatbot || {}) },
   };
 };
 
@@ -854,6 +904,13 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     setSettings((prev) => ({ ...prev, pricingPackages }));
   };
 
+  const updateChatbotSettings = (chatbot: Partial<ChatbotSettings>) => {
+    setSettings((prev) => ({
+      ...prev,
+      chatbot: { ...prev.chatbot, ...chatbot },
+    }));
+  };
+
   // Portfolio Methods
   const addPortfolioItem = (item: Omit<EditablePortfolioItem, 'id'>): EditablePortfolioItem => {
     const newItem: EditablePortfolioItem = {
@@ -1038,6 +1095,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       updateSEO,
       updateServices,
       updatePricingPackages,
+      updateChatbotSettings,
       addPortfolioItem,
       editPortfolioItem,
       deletePortfolioItem,
@@ -1082,3 +1140,5 @@ export const useWebsiteSettings = () => {
   }
   return context;
 };
+
+export const useAdminSettings = useWebsiteSettings;
