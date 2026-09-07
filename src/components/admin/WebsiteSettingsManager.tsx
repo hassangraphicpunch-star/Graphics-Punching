@@ -153,10 +153,15 @@ export const WebsiteSettingsManager: React.FC = () => {
 
   const handleSendTestChatAlert = async () => {
     setIsSendingTestChatAlert(true);
-    const targetEmail =
+    const rawTarget =
       settings.chatbot?.adminNotificationEmail ||
       settings.emailSettings?.notificationEmail ||
-      'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com';
+      'graphicspunching264@gmail.com';
+    const targetEmail = rawTarget
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s && !s.toLowerCase().includes('hassangraphicpunch'))
+      .join(', ') || 'graphicspunching264@gmail.com';
 
     try {
       const res = await fetch('/api/chatbot/notify-admin', {
@@ -1529,9 +1534,9 @@ export const WebsiteSettingsManager: React.FC = () => {
                     </label>
                     <input
                       type="text"
-                      value={settings.chatbot?.adminNotificationEmail ?? 'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com'}
+                      value={settings.chatbot?.adminNotificationEmail ?? 'graphicspunching264@gmail.com'}
                       onChange={(e) => updateChatbotSettings({ adminNotificationEmail: e.target.value })}
-                      placeholder="e.g. hassangraphicpunch@gmail.com, graphicspunching264@gmail.com"
+                      placeholder="e.g. graphicspunching264@gmail.com"
                       className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-mono"
                     />
                     <p className="text-[10px] text-zinc-500 mt-1">

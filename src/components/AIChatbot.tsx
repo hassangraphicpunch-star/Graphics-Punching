@@ -101,10 +101,15 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     });
 
     const activeConversation = conversationSnapshot || messages;
-    const adminTarget =
+    const rawTarget =
       chatbotConfig?.adminNotificationEmail ||
       settings.emailSettings?.notificationEmail ||
-      'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com';
+      'graphicspunching264@gmail.com';
+    const adminTarget = rawTarget
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s && !s.toLowerCase().includes('hassangraphicpunch'))
+      .join(', ') || 'graphicspunching264@gmail.com';
 
     const sessionInfo = {
       url: window.location.href,

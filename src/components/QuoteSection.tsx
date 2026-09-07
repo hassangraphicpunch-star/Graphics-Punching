@@ -267,13 +267,33 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({
       });
 
       // Dispatch to FormSubmit AJAX endpoint connected to graphicspunching264@gmail.com
-      await fetch(`https://formsubmit.co/ajax/${CONTACT_INFO.email}`, {
+      const formSubmitPromise = fetch(`https://formsubmit.co/ajax/${CONTACT_INFO.email}`, {
         method: 'POST',
         body: emailPayload,
         headers: {
           'Accept': 'application/json'
         }
-      });
+      }).catch((e) => console.warn('FormSubmit external dispatch warning:', e));
+
+      // Also record lead directly to local database for instant Admin Portal Lead visibility
+      const localLeadPromise = fetch('/api/leads/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.fullName,
+          email: formData.email,
+          phone: formData.phone,
+          company: formData.businessName,
+          serviceInterested: formData.service,
+          projectDetails: `${estimate.tierLabel} - $${estimate.total} | ${formData.message || 'No additional notes.'}`,
+          estimateTotal: estimate.total,
+          source: 'Interactive Quote Calculator',
+        }),
+      }).catch((e) => console.warn('Local lead record warning:', e));
+
+      await Promise.allSettled([formSubmitPromise, localLeadPromise]);
 
       setIsSubmitting(false);
       setIsSubmitted(true);

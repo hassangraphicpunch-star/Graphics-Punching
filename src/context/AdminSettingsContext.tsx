@@ -120,7 +120,7 @@ const DEFAULT_CHATBOT: ChatbotSettings = {
   autoOpenDelaySeconds: 0,
   enableInstantQuoteShortcut: true,
   notifyAdminOnInquiry: true,
-  adminNotificationEmail: 'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com',
+  adminNotificationEmail: 'graphicspunching264@gmail.com',
 };
 
 const DEFAULT_WATERMARK: WatermarkConfig = {
@@ -394,8 +394,17 @@ export const sanitizeSettings = (raw: any): WebsiteSettings => {
   return {
     branding: { ...DEFAULT_BRANDING, ...(raw.branding || {}) },
     homepage: { ...DEFAULT_HOMEPAGE, ...(raw.homepage || {}) },
-    contact: { ...DEFAULT_CONTACT, ...(raw.contact || {}) },
-    emailSettings: { ...DEFAULT_EMAIL_SETTINGS, ...(raw.emailSettings || {}) },
+    contact: {
+      ...DEFAULT_CONTACT,
+      ...(raw.contact || {}),
+      email: raw.contact?.email && raw.contact.email.includes('@') ? raw.contact.email : 'graphicspunching264@gmail.com',
+    },
+    emailSettings: {
+      ...DEFAULT_EMAIL_SETTINGS,
+      ...(raw.emailSettings || {}),
+      connectedEmail: raw.emailSettings?.connectedEmail || 'graphicspunching264@gmail.com',
+      notificationEmail: raw.emailSettings?.notificationEmail || 'graphicspunching264@gmail.com',
+    },
     social,
     watermark: { ...DEFAULT_WATERMARK, ...(raw.watermark || {}) },
     sections: { ...DEFAULT_SECTIONS, ...(raw.sections || {}) },
@@ -404,7 +413,20 @@ export const sanitizeSettings = (raw: any): WebsiteSettings => {
     seo: { ...DEFAULT_SEO, ...(raw.seo || {}) },
     services: Array.isArray(raw.services) && raw.services.length > 0 ? raw.services : SERVICES,
     pricingPackages: Array.isArray(raw.pricingPackages) && raw.pricingPackages.length > 0 ? raw.pricingPackages : SERVICE_PACKAGES,
-    chatbot: { ...DEFAULT_CHATBOT, ...(raw.chatbot || {}) },
+    chatbot: {
+      ...DEFAULT_CHATBOT,
+      ...(raw.chatbot || {}),
+      supportEmail: raw.chatbot?.supportEmail || 'graphicspunching264@gmail.com',
+      adminNotificationEmail: (() => {
+        const rawEmail = raw.chatbot?.adminNotificationEmail || 'graphicspunching264@gmail.com';
+        const cleaned = rawEmail
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter((s: string) => s && !s.toLowerCase().includes('hassangraphicpunch'))
+          .join(', ');
+        return cleaned || 'graphicspunching264@gmail.com';
+      })(),
+    },
   };
 };
 
