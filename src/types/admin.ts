@@ -193,6 +193,8 @@ export interface ChatbotSettings {
   supportPhone: string;
   autoOpenDelaySeconds: number;
   enableInstantQuoteShortcut: boolean;
+  notifyAdminOnInquiry?: boolean;
+  adminNotificationEmail?: string;
 }
 
 export interface WebsiteSettings {

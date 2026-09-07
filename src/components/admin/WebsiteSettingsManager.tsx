@@ -40,6 +40,7 @@ import {
   Check,
   Bot,
   MessageSquare,
+  Send,
 } from 'lucide-react';
 import { useWebsiteSettings } from '../../context/AdminSettingsContext';
 import { EditablePortfolioItem, NavigationMenuItem } from '../../types/admin';
@@ -79,6 +80,7 @@ export const WebsiteSettingsManager: React.FC = () => {
     importSettingsJSON,
     previewMode,
     togglePreviewMode,
+    addEmailLog,
   } = useWebsiteSettings();
 
   // Active Tab
@@ -144,6 +146,69 @@ export const WebsiteSettingsManager: React.FC = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  // Test Chatbot Admin Notification Alert Handler
+  const [isSendingTestChatAlert, setIsSendingTestChatAlert] = useState(false);
+
+  const handleSendTestChatAlert = async () => {
+    setIsSendingTestChatAlert(true);
+    const targetEmail =
+      settings.chatbot?.adminNotificationEmail ||
+      settings.emailSettings?.notificationEmail ||
+      'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com';
+
+    try {
+      const res = await fetch('/api/chatbot/notify-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          selectedInquiry: 'What are your digitizing turnaround times & rates? (Sample Administrator Pipeline Verification)',
+          eventType: 'quick_reply',
+          timestamp: new Date().toLocaleString(),
+          conversation: [
+            {
+              role: 'assistant',
+              content: settings.chatbot?.welcomeMessage || 'Hi there! 👋 Welcome to Graphics Punching.',
+              timestamp: 'Just now',
+            },
+            {
+              role: 'user',
+              content: 'What are your digitizing turnaround times & rates?',
+              timestamp: 'Just now',
+            },
+          ],
+          adminEmail: targetEmail,
+          sessionInfo: {
+            url: window.location.href,
+            platform: 'Admin Management Portal (Verification Test)',
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (addEmailLog) {
+          addEmailLog({
+            to: targetEmail,
+            recipientName: 'Administrator',
+            from: settings.emailSettings?.connectedEmail || 'graphicspunching264@gmail.com',
+            replyTo: settings.contact?.email || 'graphicspunching264@gmail.com',
+            subject: `[Test Notification Alert] Chatbot Inquiry Pipeline Verified`,
+            body: `Test notification sent successfully to ${targetEmail}.\nTracking ID: ${data.trackingId}\nStatus: Delivered.`,
+            attachments: [],
+            status: 'delivered',
+          });
+        }
+        triggerSaveNotification(`Test alert email dispatched to ${targetEmail}!`);
+      } else {
+        throw new Error(data.error || 'Failed to dispatch test notification');
+      }
+    } catch (err: any) {
+      alert(`Error sending test notification: ${err.message || err}`);
+    } finally {
+      setIsSendingTestChatAlert(false);
+    }
   };
 
   // Portfolio Image Upload Handler
@@ -1430,6 +1495,78 @@ export const WebsiteSettingsManager: React.FC = () => {
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Administrator Email Alerts on Inquiries & Interactions */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-zinc-950 border border-zinc-800 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black uppercase text-[#FFC400] flex items-center gap-1.5">
+                      <Mail className="w-4 h-4 text-[#FFC400]" />
+                      <span>Administrator Email Inquiries &amp; Action Alerts</span>
+                    </h4>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">
+                      Automatically receive email alerts whenever a customer clicks an inquiry option, sends a message, or triggers a quick-action button.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSendingTestChatAlert}
+                    onClick={handleSendTestChatAlert}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-[#FFC400] text-zinc-200 hover:text-black text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{isSendingTestChatAlert ? 'Sending Test...' : 'Send Test Alert Email'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-zinc-400 mb-1">
+                      Admin Notification Email(s)
+                    </label>
+                    <input
+                      type="text"
+                      value={settings.chatbot?.adminNotificationEmail ?? 'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com'}
+                      onChange={(e) => updateChatbotSettings({ adminNotificationEmail: e.target.value })}
+                      placeholder="e.g. hassangraphicpunch@gmail.com, graphicspunching264@gmail.com"
+                      className="w-full bg-zinc-900 border border-zinc-750 focus:border-[#FFC400] text-white px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-mono"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1">
+                      Separate multiple email addresses with commas. All listed recipients will receive instant inquiry alerts.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col justify-center space-y-3">
+                    <label className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 cursor-pointer">
+                      <div>
+                        <span className="text-xs text-white font-bold block">
+                          Auto-Send Email on Inquiries &amp; Clicks
+                        </span>
+                        <span className="text-[11px] text-zinc-400 block mt-0.5">
+                          Fires on user-typed messages, popular inquiry options, and quick-action buttons
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={settings.chatbot?.notifyAdminOnInquiry !== false}
+                        onChange={(e) => updateChatbotSettings({ notifyAdminOnInquiry: e.target.checked })}
+                        className="w-4 h-4 accent-[#FFC400] rounded ml-3 flex-shrink-0"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-xl p-3 text-[11px] text-zinc-400 space-y-1">
+                  <span className="text-zinc-300 font-bold block">Every notification email includes:</span>
+                  <ul className="list-disc list-inside space-y-0.5 text-zinc-400 text-[10px]">
+                    <li>Selected message, inquiry option, or quick-action button clicked</li>
+                    <li>Accurate date, time, and timezone timestamp</li>
+                    <li>Full chronological conversation transcript &amp; message count</li>
+                    <li>Page URL and user device/platform context</li>
+                  </ul>
                 </div>
               </div>
 

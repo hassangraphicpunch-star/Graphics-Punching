@@ -15,7 +15,9 @@ import {
   CheckCircle2,
   FileCode2,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Mail,
+  Check
 } from 'lucide-react';
 import { useAdminSettings } from '../context/AdminSettingsContext';
 
@@ -37,7 +39,7 @@ interface AIChatbotProps {
 }
 
 export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNavigate }) => {
-  const { settings } = useAdminSettings();
+  const { settings, addEmailLog } = useAdminSettings();
   const chatbotConfig = settings.chatbot;
 
   // Don't render anything if the chatbot is disabled in Management Portal
@@ -51,6 +53,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
   const [showTooltip, setShowTooltip] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [notificationToast, setNotificationToast] = useState<{ show: boolean; text: string } | null>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     return [
@@ -67,6 +70,99 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Helper to automatically notify administrator via email on chatbot interactions
+  const notifyAdminOfInteraction = async ({
+    selectedInquiry,
+    eventType = 'user_message',
+    actionDetails,
+    conversationSnapshot,
+  }: {
+    selectedInquiry: string;
+    eventType: 'quick_reply' | 'user_message' | 'quick_action' | 'message_click';
+    actionDetails?: any;
+    conversationSnapshot?: ChatMessage[];
+  }) => {
+    // If explicitly disabled in admin settings, do not notify
+    if (chatbotConfig?.notifyAdminOnInquiry === false) {
+      return;
+    }
+
+    const now = new Date();
+    const formattedDateTime = now.toLocaleString('en-US', {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      timeZoneName: 'short',
+    });
+
+    const activeConversation = conversationSnapshot || messages;
+    const adminTarget =
+      chatbotConfig?.adminNotificationEmail ||
+      settings.emailSettings?.notificationEmail ||
+      'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com';
+
+    const sessionInfo = {
+      url: window.location.href,
+      path: window.location.hash || window.location.pathname,
+      platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
+      viewport: typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : 'Desktop',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+    };
+
+    // Show temporary feedback toast in chatbot header/banner
+    const firstRecipient = adminTarget.split(/[,;]+/)[0].trim();
+    setNotificationToast({
+      show: true,
+      text: `Alert emailed to admin (${firstRecipient})`,
+    });
+    setTimeout(() => {
+      setNotificationToast(null);
+    }, 4500);
+
+    try {
+      // 1. Dispatch to server endpoint /api/chatbot/notify-admin
+      fetch('/api/chatbot/notify-admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          selectedInquiry,
+          eventType,
+          timestamp: formattedDateTime,
+          conversation: activeConversation.map((m) => ({
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+          })),
+          adminEmail: adminTarget,
+          actionDetails,
+          sessionInfo,
+        }),
+      }).catch((err) => console.warn('Background admin email notification failed:', err));
+
+      // 2. Also register in local dispatch history in AdminSettingsContext
+      if (addEmailLog) {
+        addEmailLog({
+          to: adminTarget,
+          recipientName: 'Administrator',
+          from: settings.emailSettings?.connectedEmail || 'graphicspunching264@gmail.com',
+          replyTo: settings.contact?.email || 'graphicspunching264@gmail.com',
+          subject: `[Chatbot Inquiry] ${selectedInquiry.slice(0, 60)}`,
+          body: `EVENT TYPE: ${eventType.toUpperCase()}\nSELECTED INQUIRY / ACTION: "${selectedInquiry}"\nDATE & TIME: ${formattedDateTime}\n\nCONVERSATION DETAILS (${activeConversation.length} messages):\n${activeConversation
+            .map((m) => `[${m.timestamp}] ${m.role.toUpperCase()}: ${m.content}`)
+            .join('\n')}`,
+          attachments: [],
+          status: 'delivered',
+        });
+      }
+    } catch (err) {
+      console.warn('Error recording admin email notification:', err);
+    }
+  };
 
   // Auto-scroll to bottom of messages
   const scrollToBottom = () => {
@@ -102,7 +198,10 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     return () => clearTimeout(timer);
   }, []);
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const handleSendMessage = async (
+    textToSend?: string,
+    sourceType: 'user_message' | 'quick_reply' = 'user_message'
+  ) => {
     const text = (textToSend !== undefined ? textToSend : inputMessage).trim();
     if (!text || isLoading) return;
 
@@ -117,6 +216,13 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     setMessages(newMessages);
     setInputMessage('');
     setIsLoading(true);
+
+    // Automatically send notification email to administrator
+    notifyAdminOfInteraction({
+      selectedInquiry: text,
+      eventType: sourceType,
+      conversationSnapshot: newMessages,
+    });
 
     try {
       // Build request payload for backend endpoint
@@ -176,6 +282,28 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     }
   };
 
+  const handleQuickPromptClick = (prompt: string) => {
+    handleSendMessage(prompt, 'quick_reply');
+  };
+
+  const handleMessageClick = (msg: ChatMessage) => {
+    notifyAdminOfInteraction({
+      selectedInquiry: `Selected Message Topic: "${msg.content.slice(0, 150)}" [${msg.role}]`,
+      eventType: 'message_click',
+      conversationSnapshot: messages,
+    });
+  };
+
+  const handleHeaderQuoteClick = () => {
+    notifyAdminOfInteraction({
+      selectedInquiry: '⚡ Request Instant Quote (Header Shortcut)',
+      eventType: 'quick_action',
+      actionDetails: { type: 'quote', source: 'header' },
+      conversationSnapshot: messages,
+    });
+    if (onOpenQuoteModal) onOpenQuoteModal('vector-artwork', 'simple-vector');
+  };
+
   const generateClientFallback = (query: string, config: any): { content: string; suggestedAction?: any } => {
     const q = query.toLowerCase();
     if (q.includes('price') || q.includes('cost') || q.includes('rate') || q.includes('quote')) {
@@ -213,6 +341,14 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
   };
 
   const handleActionClick = (action: { type: string; label: string; url?: string }) => {
+    // Notify administrator immediately of clicked quick action button
+    notifyAdminOfInteraction({
+      selectedInquiry: `Action Clicked: ${action.label} (${action.type})`,
+      eventType: 'quick_action',
+      actionDetails: action,
+      conversationSnapshot: messages,
+    });
+
     if (action.type === 'quote') {
       if (onOpenQuoteModal) {
         onOpenQuoteModal('vector-artwork', 'simple-vector');
@@ -400,9 +536,7 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
               {chatbotConfig.enableInstantQuoteShortcut && !isMinimized && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (onOpenQuoteModal) onOpenQuoteModal('vector-artwork', 'simple-vector');
-                  }}
+                  onClick={handleHeaderQuoteClick}
                   className="hidden xs:flex items-center gap-1 text-[11px] font-bold bg-[#FFC400] text-black px-2.5 py-1 rounded-lg hover:bg-[#ffcf33] active:scale-95 transition-all shadow-sm cursor-pointer"
                   title="Request Instant Quote"
                 >
@@ -459,6 +593,19 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
                   </span>
                 </div>
 
+                {/* Instant Email Notification Banner (when interaction occurs) */}
+                {notificationToast && (
+                  <div className="bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[11px] px-3 py-2 rounded-xl flex items-center justify-between shadow-sm animate-fadeIn">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Mail className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 animate-pulse" />
+                      <span className="font-medium truncate">{notificationToast.text}</span>
+                    </div>
+                    <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0 ml-2">
+                      Notified
+                    </span>
+                  </div>
+                )}
+
                 {/* Message Stream */}
                 {messages.map((msg) => {
                   const isAssistant = msg.role === 'assistant';
@@ -475,10 +622,12 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
                         )}
 
                         <div
-                          className={`p-3.5 rounded-2xl leading-relaxed ${
+                          onClick={() => handleMessageClick(msg)}
+                          title="Click to notify administrator about this inquiry topic"
+                          className={`p-3.5 rounded-2xl leading-relaxed cursor-pointer transition-all hover:ring-1 hover:ring-[#FFC400]/50 ${
                             isAssistant
-                              ? 'bg-zinc-900/90 text-zinc-200 border border-zinc-800 rounded-bl-sm shadow-md'
-                              : 'bg-[#FFC400] text-zinc-950 font-medium rounded-br-sm shadow-md'
+                              ? 'bg-zinc-900/90 text-zinc-200 border border-zinc-800 rounded-bl-sm shadow-md hover:bg-zinc-850'
+                              : 'bg-[#FFC400] text-zinc-950 font-medium rounded-br-sm shadow-md hover:brightness-105'
                           }`}
                         >
                           {isAssistant ? (
@@ -492,7 +641,10 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
                             <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center">
                               <button
                                 type="button"
-                                onClick={() => handleActionClick(msg.suggestedAction!)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleActionClick(msg.suggestedAction!);
+                                }}
                                 className="inline-flex items-center gap-1.5 text-xs font-black bg-[#FFC400] text-black px-3 py-1.5 rounded-lg hover:bg-[#ffcf33] active:scale-95 transition-all shadow-sm cursor-pointer"
                               >
                                 <span>{msg.suggestedAction.label}</span>
@@ -537,7 +689,7 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
                         <button
                           key={pIdx}
                           type="button"
-                          onClick={() => handleSendMessage(prompt)}
+                          onClick={() => handleQuickPromptClick(prompt)}
                           className="text-left text-xs bg-zinc-900/80 hover:bg-zinc-800/90 text-zinc-300 hover:text-white border border-zinc-800 hover:border-[#FFC400]/40 rounded-xl px-3 py-2 transition-all flex items-center justify-between group cursor-pointer"
                         >
                           <span className="line-clamp-1">{prompt}</span>

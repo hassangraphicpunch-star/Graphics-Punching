@@ -119,6 +119,8 @@ const DEFAULT_CHATBOT: ChatbotSettings = {
   supportPhone: '+1 (607) 205-0030',
   autoOpenDelaySeconds: 0,
   enableInstantQuoteShortcut: true,
+  notifyAdminOnInquiry: true,
+  adminNotificationEmail: 'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com',
 };
 
 const DEFAULT_WATERMARK: WatermarkConfig = {

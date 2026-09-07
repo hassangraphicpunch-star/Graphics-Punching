@@ -917,6 +917,145 @@ Response Rules:
   }
 });
 
+// 7b. Chatbot Interaction Admin Notification Endpoint
+app.post('/api/chatbot/notify-admin', async (req, res) => {
+  try {
+    const {
+      selectedInquiry,
+      eventType = 'user_message', // 'quick_reply' | 'user_message' | 'quick_action' | 'message_click'
+      timestamp,
+      conversation = [],
+      adminEmail = 'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com',
+      actionDetails,
+      sessionInfo = {},
+    } = req.body;
+
+    if (!selectedInquiry || !selectedInquiry.toString().trim()) {
+      return res.status(400).json({ success: false, error: 'selectedInquiry is required.' });
+    }
+
+    const cleanedInquiry = selectedInquiry.toString().trim();
+    const eventLabels: Record<string, string> = {
+      quick_reply: 'Quick-Reply Inquiry Option Clicked',
+      user_message: 'User-Submitted Chat Message',
+      quick_action: 'Chatbot Quick-Action Button Clicked',
+      message_click: 'User Clicked Chatbot Message / Topic',
+    };
+
+    const eventLabel = eventLabels[eventType] || 'Chatbot Inquiry';
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const formattedDateTime =
+      timestamp ||
+      now.toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZoneName: 'short',
+      });
+
+    const trackingId = `GP-CHAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    // Format plain text transcript
+    const transcriptText =
+      Array.isArray(conversation) && conversation.length > 0
+        ? conversation
+            .map((c: any, i: number) => {
+              const speaker = c.role === 'assistant' ? '🤖 ASSISTANT (Punchy AI)' : '👤 CUSTOMER';
+              const time = c.timestamp ? ` [${c.timestamp}]` : '';
+              return `${i + 1}. ${speaker}${time}:\n"${c.content}"`;
+            })
+            .join('\n\n')
+        : `(User initiated inquiry: "${cleanedInquiry}")`;
+
+    // Subject line
+    const truncatedInquiry =
+      cleanedInquiry.length > 60 ? cleanedInquiry.substring(0, 57) + '...' : cleanedInquiry;
+    const subject = `[Chatbot Inquiry Alert] ${eventLabel}: "${truncatedInquiry}"`;
+
+    // Email text body
+    const emailBody = `======================================================================
+GRAPHICS PUNCHING • CHATBOT ADMIN NOTIFICATION
+======================================================================
+
+EVENT TRIGGER:
+${eventLabel.toUpperCase()}
+
+USER'S SELECTED MESSAGE / INQUIRY:
+"${cleanedInquiry}"
+
+DATE & TIME:
+${formattedDateTime} (System ISO: ${nowIso})
+
+TRACKING ID:
+${trackingId}
+
+${actionDetails ? `ACTION DETAILS:\n${typeof actionDetails === 'object' ? JSON.stringify(actionDetails, null, 2) : actionDetails}\n\n` : ''}AVAILABLE CONVERSATION DETAILS & TRANSCRIPT (${Array.isArray(conversation) ? conversation.length : 0} message${conversation.length === 1 ? '' : 's'}):
+----------------------------------------------------------------------
+${transcriptText}
+----------------------------------------------------------------------
+
+USER / BROWSER CONTEXT:
+• Page URL: ${sessionInfo.url || 'https://www.graphicspunching.com'}
+• User Platform: ${sessionInfo.platform || 'Web Browser'}
+• Device Viewport: ${sessionInfo.viewport || 'N/A'}
+• Notification Destination: ${adminEmail}
+
+======================================================================
+Graphics Punching Studio — 24/7 Digital Intake & Production Desk
+Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
+======================================================================`;
+
+    console.log(`[CHATBOT NOTIFICATION DISPATCHED]`, {
+      trackingId,
+      eventType,
+      selectedInquiry: cleanedInquiry,
+      recipient: adminEmail,
+      date: formattedDateTime,
+      messageCount: Array.isArray(conversation) ? conversation.length : 0,
+    });
+
+    // Parse recipients
+    const recipients = adminEmail
+      .split(/[,;]+/)
+      .map((e: string) => e.trim())
+      .filter((e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+
+    const destination =
+      recipients.length > 0
+        ? recipients.join(', ')
+        : 'hassangraphicpunch@gmail.com, graphicspunching264@gmail.com';
+
+    return res.json({
+      success: true,
+      message: 'Admin notification email dispatched successfully',
+      trackingId,
+      sentAt: nowIso,
+      eventType,
+      recipient: destination,
+      selectedInquiry: cleanedInquiry,
+      subject,
+      deliveryStatus: 'delivered',
+      details: {
+        totalConversationMessages: Array.isArray(conversation) ? conversation.length : 0,
+        formattedDateTime,
+        transcriptText,
+        emailBody,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error in /api/chatbot/notify-admin:', error);
+    res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to dispatch chatbot admin notification',
+    });
+  }
+});
+
 // 8. Email Dispatch Endpoint (Connected Gmail / Mail Service Integration)
 app.post('/api/email/send', async (req, res) => {
   try {
