@@ -75,6 +75,7 @@ export interface WatermarkConfig {
 
 export interface SectionVisibilityFlags {
   topContactBar: boolean;
+  hero?: boolean;
   heroStats: boolean;
   beforeAfterSlider: boolean;
   servicesGrid: boolean;

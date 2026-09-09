@@ -1,6 +1,111 @@
 {
   "settings": {
-    "siteName": "Graphics Punching"
+    "branding": {
+      "siteName": "Graphics Punching Studio",
+      "tagline": "Master Digitizing & Vector Conversion",
+      "logoText": "GRAPHICS PUNCHING",
+      "primaryColor": "#FFC400",
+      "accentColor": "#18181b",
+      "fontDisplay": "Montserrat, sans-serif",
+      "fontBody": "Inter, sans-serif",
+      "darkThemeByDefault": true
+    },
+    "homepage": {
+      "heroBadge": "PREMIUM VECTOR ART & EMBROIDERY DIGITIZING",
+      "heroHeadline": "MASTER-CRAFTED APPAREL & VECTOR ARTWORK",
+      "heroHeadlineHighlight": "READY FOR PRESS & EMBROIDERY MACHINES",
+      "heroSubtitle": "Transform any sketch, raster image, or emblem into high-precision, production-ready manual vector files and machine-calibrated embroidery digitizing in as fast as 2 to 6 hours.",
+      "heroCtaText": "START CUSTOM QUOTE",
+      "heroSecondaryCtaText": "EXPLORE OUR WORK",
+      "trustBadge1": "PREMIUM",
+      "trustBadge2": "FAST",
+      "trustBadge3": "NO SETUP"
+    },
+    "contact": {
+      "email": "graphicspunching264@gmail.com",
+      "phone": "+1 (607) 205-0030",
+      "whatsapp": "+1 (607) 205-0030",
+      "workingHours": "24/7 Production Desk (Mon-Sat)",
+      "address": "Global High-Speed Production Studio & Digital Dispatch",
+      "rushTurnaroundClaim": "2-6 Hours Available",
+      "standardTurnaroundClaim": "12-24 Hours"
+    },
+    "emailSettings": {
+      "provider": "gmail_workspace",
+      "connectedEmail": "graphicspunching264@gmail.com",
+      "notificationEmail": "graphicspunching264@gmail.com",
+      "senderDisplayName": "Graphics Punching Studio Desk",
+      "enableAutoResponder": true,
+      "autoResponderSubject": "Thank you for choosing Graphics Punching - Order Evaluation Started",
+      "autoResponderBody": "Hello,\n\nWe have received your artwork and project request. Our production specialists are inspecting your design to ensure flawless machine calibration and razor-sharp output.\n\nWe will deliver your quote and production roadmap shortly.\n\nBest regards,\nGraphics Punching Support Team\nPhone: +1 (607) 205-0030",
+      "quotePrefix": "GP-QTE",
+      "replyToName": "Graphics Punching Dispatch"
+    },
+    "social": {
+      "facebook": "https://www.facebook.com/profile.php?id=61593649506118",
+      "instagram": "https://www.instagram.com/graphicspunching/",
+      "pinterest": "https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777",
+      "linkedin": "",
+      "youtube": "",
+      "tiktok": "",
+      "twitter": "",
+      "whatsapp": "+16072050030",
+      "website": "https://www.graphicspunching.com"
+    },
+    "watermark": {
+      "enabled": true,
+      "text": "GRAPHICS PUNCHING • PROOF",
+      "opacity": 0.22,
+      "size": 20,
+      "placement": "diagonal",
+      "color": "#ffffff"
+    },
+    "sections": {
+      "topContactBar": true,
+      "hero": true,
+      "heroStats": true,
+      "beforeAfterSlider": true,
+      "servicesGrid": true,
+      "whyChooseUs": true,
+      "processSteps": true,
+      "pricingSection": true,
+      "portfolioShowcase": true,
+      "testimonials": true,
+      "faqSection": true,
+      "ctaBanner": true,
+      "footerDirectory": true,
+      "watermarkOverlay": true
+    },
+    "footer": {
+      "description": "Graphics Punching is the premier global studio specializing in custom apparel screen printing, high-precision manual vector conversions, and machine-tested embroidery digitizing for brands and decorators worldwide.",
+      "copyrightText": "© 2026 Graphics Punching. All rights reserved. Registered trademark.",
+      "disclaimerText": "All company names, brand logos, and registered marks displayed in sample portfolios remain the sole property of their respective trademark holders and are showcased strictly for technique demonstration.",
+      "addressSnippet": "Global Digital Dispatch • Fast Worldwide Service & High-Speed Turnaround",
+      "showMadeWithLove": true,
+      "quickLinksTitle": "Quick Directory"
+    },
+    "chatbot": {
+      "enabled": true,
+      "botName": "Punchy AI",
+      "botRole": "Graphics Punching Virtual Assistant",
+      "welcomeMessage": "Hello! I am Punchy AI, your 24/7 artwork and digitizing specialist. How can we elevate your apparel decoration today?",
+      "quickPrompts": [
+        "What are your digitizing turnaround times & rates?",
+        "Which file formats do you deliver (DST, EMB, PES)?",
+        "How do custom patch orders and borders work?",
+        "Can you clean up a low-res image into high-res vector?"
+      ],
+      "tone": "friendly",
+      "primaryColor": "#FFC400",
+      "showAvatar": true,
+      "position": "bottom-right",
+      "supportEmail": "graphicspunching264@gmail.com",
+      "supportPhone": "+1 (607) 205-0030",
+      "autoOpenDelaySeconds": 0,
+      "enableInstantQuoteShortcut": true,
+      "notifyAdminOnInquiry": true,
+      "adminNotificationEmail": "graphicspunching264@gmail.com"
+    }
   },
   "portfolioItems": [],
   "leads": [
@@ -19,7 +124,7 @@
     }
   ],
   "emailLogs": [],
-  "publishedAt": "2026-09-03T18:43:14.261Z",
-  "version": 6,
-  "publishNote": "Admin published updates to live website"
+  "publishedAt": "2026-09-09T20:42:06.987Z",
+  "version": 9,
+  "publishNote": "Verification of persistent publishing"
 }

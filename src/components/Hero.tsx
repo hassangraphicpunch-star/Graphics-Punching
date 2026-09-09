@@ -9,11 +9,27 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfolio }) => {
   const { settings } = useWebsiteSettings();
-  const { hero, branding } = settings;
+  const { homepage, branding } = settings;
 
-  if (!settings.sections.hero) {
+  // Only hide hero if explicitly disabled in section visibility flags
+  if (settings.sections?.hero === false) {
     return null;
   }
+
+  const heroData = {
+    badge: homepage?.heroBadge || (settings as any).hero?.badge || 'PREMIUM VECTOR ART & EMBROIDERY DIGITIZING',
+    headline: homepage?.heroHeadline || (settings as any).hero?.headline || 'MASTER-CRAFTED APPAREL & VECTOR ARTWORK',
+    highlightedHeadline: homepage?.heroHeadlineHighlight || (settings as any).hero?.highlightedHeadline || 'READY FOR PRESS & EMBROIDERY MACHINES',
+    subheadline: homepage?.heroSubtitle || (settings as any).hero?.subheadline || 'Transform any sketch, raster image, or emblem into high-precision, production-ready manual vector files and machine-calibrated embroidery digitizing in as fast as 2 to 6 hours.',
+    ctaPrimaryText: homepage?.heroCtaText || (settings as any).hero?.ctaPrimaryText || 'START CUSTOM QUOTE',
+    ctaSecondaryText: homepage?.heroSecondaryCtaText || (settings as any).hero?.ctaSecondaryText || 'EXPLORE OUR WORK',
+    trustIndicators: [
+      { title: homepage?.trustBadge1 || 'PREMIUM', subtitle: 'QUALITY' },
+      { title: homepage?.trustBadge2 || 'FAST', subtitle: 'TURNAROUND' },
+      { title: homepage?.trustBadge3 || 'NO SETUP', subtitle: 'FEES' },
+      { title: '100%', subtitle: 'SATISFACTION' },
+    ],
+  };
 
   return (
     <section
@@ -44,22 +60,22 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
             {/* Small yellow uppercase eyebrow */}
             <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1 sm:py-1.5 rounded-full bg-[#FFC400]/10 border border-[#FFC400]/30 text-[#FFC400] text-[11px] sm:text-xs md:text-sm font-extrabold uppercase tracking-widest">
               <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current text-[#FFC400]" />
-              <span>{hero.badge}</span>
+              <span>{heroData.badge}</span>
             </div>
 
             {/* Massive Bold Heading */}
             <div className="space-y-1">
               <h1 className="font-display font-black text-4xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight text-white uppercase leading-[0.94] break-words">
-                {hero.headline} <br />
+                {heroData.headline} <br />
                 <span className="text-[#FFC400] drop-shadow-[0_4px_24px_rgba(255,196,0,0.35)]">
-                  {hero.highlightedHeadline}
+                  {heroData.highlightedHeadline}
                 </span>
               </h1>
             </div>
 
             {/* Supporting Text */}
             <p className="text-zinc-300 text-sm sm:text-base md:text-lg font-normal max-w-2xl leading-relaxed">
-              {hero.subheadline}
+              {heroData.subheadline}
             </p>
 
             {/* CTA Buttons */}
@@ -69,7 +85,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
                 id="hero-get-quote-btn"
                 className="w-full sm:w-auto bg-[#FFC400] hover:bg-[#ffcd1a] text-black font-extrabold text-xs sm:text-sm md:text-base tracking-wider uppercase px-6 sm:px-8 py-3.5 sm:py-4 rounded-sm flex items-center justify-center gap-3 transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] shadow-[0_8px_24px_rgba(255,196,0,0.4)] cursor-pointer min-h-[48px] group"
               >
-                <span>{hero.ctaPrimaryText}</span>
+                <span>{heroData.ctaPrimaryText}</span>
                 <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:translate-x-1.5" />
               </button>
 
@@ -78,7 +94,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
                 id="hero-view-work-btn"
                 className="w-full sm:w-auto bg-transparent hover:bg-zinc-900/90 text-white hover:text-[#FFC400] border border-zinc-600 hover:border-[#FFC400] font-bold text-xs sm:text-sm md:text-base tracking-wider uppercase px-6 sm:px-8 py-3.5 sm:py-4 rounded-sm flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer min-h-[48px] group"
               >
-                <span>{hero.ctaSecondaryText}</span>
+                <span>{heroData.ctaSecondaryText}</span>
                 <ArrowRight className="w-4 h-4 text-[#FFC400] group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -93,10 +109,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
                   </div>
                   <div className="min-w-0">
                     <h4 className="font-display font-bold text-xs sm:text-sm tracking-wide text-white uppercase group-hover:text-[#FFC400] transition-colors truncate">
-                      {hero.trustIndicators[0]?.title || 'PREMIUM'}
+                      {heroData.trustIndicators[0]?.title || 'PREMIUM'}
                     </h4>
                     <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium truncate">
-                      {hero.trustIndicators[0]?.subtitle || 'QUALITY'}
+                      {heroData.trustIndicators[0]?.subtitle || 'QUALITY'}
                     </p>
                   </div>
                 </div>
@@ -108,10 +124,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
                   </div>
                   <div className="min-w-0">
                     <h4 className="font-display font-bold text-xs sm:text-sm tracking-wide text-white uppercase group-hover:text-[#FFC400] transition-colors truncate">
-                      {hero.trustIndicators[1]?.title || 'FAST'}
+                      {heroData.trustIndicators[1]?.title || 'FAST'}
                     </h4>
                     <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium truncate">
-                      {hero.trustIndicators[1]?.subtitle || 'TURNAROUND'}
+                      {heroData.trustIndicators[1]?.subtitle || 'TURNAROUND'}
                     </p>
                   </div>
                 </div>
@@ -123,10 +139,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
                   </div>
                   <div className="min-w-0">
                     <h4 className="font-display font-bold text-xs sm:text-sm tracking-wide text-white uppercase group-hover:text-[#FFC400] transition-colors truncate">
-                      {hero.trustIndicators[2]?.title || 'NO SETUP'}
+                      {heroData.trustIndicators[2]?.title || 'NO SETUP'}
                     </h4>
                     <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium truncate">
-                      {hero.trustIndicators[2]?.subtitle || 'FEES'}
+                      {heroData.trustIndicators[2]?.subtitle || 'FEES'}
                     </p>
                   </div>
                 </div>
@@ -138,10 +154,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenQuoteModal, onScrollToPortfoli
                   </div>
                   <div className="min-w-0">
                     <h4 className="font-display font-bold text-xs sm:text-sm tracking-wide text-white uppercase group-hover:text-[#FFC400] transition-colors truncate">
-                      {hero.trustIndicators[3]?.title || '100%'}
+                      {heroData.trustIndicators[3]?.title || '100%'}
                     </h4>
                     <p className="text-[10px] sm:text-[11px] text-zinc-400 font-medium truncate">
-                      {hero.trustIndicators[3]?.subtitle || 'SATISFACTION'}
+                      {heroData.trustIndicators[3]?.subtitle || 'SATISFACTION'}
                     </p>
                   </div>
                 </div>

@@ -539,38 +539,56 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'unsaved' | 'publishing' | 'offline' | 'error'>('synced');
 
-  // Track initial server fetch completion
+  // Track initial server fetch completion and syncing guard
   const isInitialServerFetchDone = useRef<boolean>(false);
+  const isSyncingFromServer = useRef<boolean>(false);
   const autoPublishTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Synchronize from Server
   const syncFromServer = useCallback(async () => {
     try {
-      const res = await fetch('/api/site/data');
+      const res = await fetch(`/api/site/data?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      });
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.hasCustomData && json.data) {
+        if (json.success && json.data) {
           const published = json.data;
+          isSyncingFromServer.current = true;
           if (published.settings) {
             const sanitized = sanitizeSettings(published.settings);
             setSettings(sanitized);
-            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+            try {
+              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+            } catch {}
           }
           if (Array.isArray(published.portfolioItems) && published.portfolioItems.length > 0) {
             setPortfolioItems(published.portfolioItems);
-            localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(published.portfolioItems));
+            try {
+              localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(published.portfolioItems));
+            } catch {}
           }
           if (Array.isArray(published.leads)) {
             setLeads(published.leads);
-            localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(published.leads));
+            try {
+              localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(published.leads));
+            } catch {}
           }
           if (Array.isArray(published.emailLogs)) {
             setEmailLogs(published.emailLogs);
-            localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(published.emailLogs));
+            try {
+              localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(published.emailLogs));
+            } catch {}
           }
           if (json.publishedAt) {
             setLastPublishedAt(json.publishedAt);
-            localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, json.publishedAt);
+            try {
+              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, json.publishedAt);
+            } catch {}
           }
           setHasUnpublishedChanges(false);
           setSyncStatus('synced');
@@ -578,6 +596,10 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     } catch (err) {
       console.warn('Could not sync with server:', err);
+    } finally {
+      setTimeout(() => {
+        isSyncingFromServer.current = false;
+      }, 300);
     }
   }, []);
 
@@ -605,20 +627,28 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
           const packet = JSON.parse(event.data);
           if (packet.type === 'published_update' && packet.data) {
             const updated = packet.data;
+            isSyncingFromServer.current = true;
             if (updated.settings) {
               const sanitized = sanitizeSettings(updated.settings);
               setSettings(sanitized);
-              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+              try {
+                localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+              } catch {}
             }
             if (Array.isArray(updated.portfolioItems)) setPortfolioItems(updated.portfolioItems);
             if (Array.isArray(updated.leads)) setLeads(updated.leads);
             if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
             if (packet.publishedAt) {
               setLastPublishedAt(packet.publishedAt);
-              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, packet.publishedAt);
+              try {
+                localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, packet.publishedAt);
+              } catch {}
             }
             setHasUnpublishedChanges(false);
             setSyncStatus('synced');
+            setTimeout(() => {
+              isSyncingFromServer.current = false;
+            }, 300);
           } else if (packet.type === 'new_lead' && packet.lead) {
             setLeads((prev) => [packet.lead, ...prev.filter((l) => l.id !== packet.lead.id)]);
           } else if (packet.type === 'reset_to_defaults') {
@@ -652,6 +682,13 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Publish to Live Website Action
   const publishToLive = async (options?: { quiet?: boolean; note?: string }): Promise<{ success: boolean; message: string; publishedAt?: string }> => {
+    if (!isAdminAuthenticated) {
+      return {
+        success: false,
+        message: 'Admin authorization required to publish live changes.',
+      };
+    }
+
     setIsPublishing(true);
     setSyncStatus('publishing');
 
@@ -675,70 +712,61 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       };
 
       // Try primary and fallback endpoints to ensure maximum reliability across environments
-      const endpointsToTry = ['/api/admin/publish', '/api/publish', '/api/site/publish', '/api/site/data'];
+      const endpointsToTry = ['/api/admin/publish', '/api/site/publish', '/api/publish', '/api/site/data'];
       let res: Response | null = null;
-      let lastStatus = 0;
+      let lastErrorMessage = '';
 
       for (const endpoint of endpointsToTry) {
         try {
-          const attempt = await fetch(endpoint, {
+          const attempt = await fetch(`${endpoint}?_t=${Date.now()}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            cache: 'no-store',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              Pragma: 'no-cache',
+            },
             body: JSON.stringify(payload),
           });
           if (attempt.ok) {
-            res = attempt;
-            break;
+            const data = await attempt.json();
+            if (data.success) {
+              res = attempt;
+              const publishTimestamp = data.publishedAt || new Date().toISOString();
+              setLastPublishedAt(publishTimestamp);
+              setHasUnpublishedChanges(false);
+              setSyncStatus('synced');
+              try {
+                localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
+              } catch {}
+              setIsPublishing(false);
+              return {
+                success: true,
+                message: 'Website published and synchronized live to all visitors in real-time.',
+                publishedAt: publishTimestamp,
+              };
+            }
           } else {
-            lastStatus = attempt.status;
+            lastErrorMessage = `Server returned HTTP ${attempt.status}`;
           }
-        } catch (fetchErr) {
-          // Continue to next endpoint attempt
+        } catch (fetchErr: any) {
+          lastErrorMessage = fetchErr?.message || 'Network error';
         }
       }
 
-      if (res && res.ok) {
-        const json = await res.json();
-        const publishTimestamp = json.publishedAt || new Date().toISOString();
-        setLastPublishedAt(publishTimestamp);
-        setHasUnpublishedChanges(false);
-        setSyncStatus('synced');
-        localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
-        setIsPublishing(false);
-        return {
-          success: true,
-          message: 'Website published and synchronized live to all visitors in real-time.',
-          publishedAt: publishTimestamp,
-        };
-      }
-
-      // If backend API is unreachable or returned status (e.g. during dev server restart or preview mode)
-      // gracefully finalize local state without blocking the user
-      const localTimestamp = new Date().toISOString();
-      setLastPublishedAt(localTimestamp);
-      setHasUnpublishedChanges(false);
-      setSyncStatus('synced');
-      localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, localTimestamp);
+      setSyncStatus('error');
       setIsPublishing(false);
       return {
-        success: true,
-        message: lastStatus === 404
-          ? 'Settings saved safely to local storage. Live server will sync automatically.'
-          : 'Settings saved locally. Server broadcast will sync automatically.',
-        publishedAt: localTimestamp,
+        success: false,
+        message: `Publish failed: ${lastErrorMessage || 'Unable to reach live publish service'}.`,
       };
     } catch (error: any) {
       console.error('Publish to live encountered issue:', error);
-      // Even on exception, keep user data safe locally
-      const localTimestamp = new Date().toISOString();
-      setLastPublishedAt(localTimestamp);
-      setHasUnpublishedChanges(false);
-      setSyncStatus('synced');
+      setSyncStatus('error');
       setIsPublishing(false);
       return {
-        success: true,
-        message: 'Settings saved securely to browser memory.',
-        publishedAt: localTimestamp,
+        success: false,
+        message: 'Could not connect to live publishing service.',
       };
     }
   };
@@ -760,18 +788,20 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn('Failed to persist settings:', e);
     }
 
-    if (isInitialServerFetchDone.current) {
-      setHasUnpublishedChanges(true);
-      if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+    if (isSyncingFromServer.current) return;
+    if (!isAdminAuthenticated) return;
+    if (!isInitialServerFetchDone.current) return;
 
-      if (autoPublishLive) {
-        if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
-        autoPublishTimeoutRef.current = setTimeout(() => {
-          publishToLive({ quiet: true, note: 'Auto-published live update' });
-        }, 1200);
-      }
+    setHasUnpublishedChanges(true);
+    if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+
+    if (autoPublishLive) {
+      if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
+      autoPublishTimeoutRef.current = setTimeout(() => {
+        publishToLive({ quiet: true, note: 'Auto-published live update' });
+      }, 1200);
     }
-  }, [settings, autoPublishLive]);
+  }, [settings, autoPublishLive, isAdminAuthenticated]);
 
   useEffect(() => {
     try {
@@ -780,18 +810,20 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       console.warn('Failed to persist portfolio items:', e);
     }
 
-    if (isInitialServerFetchDone.current) {
-      setHasUnpublishedChanges(true);
-      if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+    if (isSyncingFromServer.current) return;
+    if (!isAdminAuthenticated) return;
+    if (!isInitialServerFetchDone.current) return;
 
-      if (autoPublishLive) {
-        if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
-        autoPublishTimeoutRef.current = setTimeout(() => {
-          publishToLive({ quiet: true, note: 'Auto-published live portfolio update' });
-        }, 1200);
-      }
+    setHasUnpublishedChanges(true);
+    if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+
+    if (autoPublishLive) {
+      if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
+      autoPublishTimeoutRef.current = setTimeout(() => {
+        publishToLive({ quiet: true, note: 'Auto-published live portfolio update' });
+      }, 1200);
     }
-  }, [portfolioItems, autoPublishLive]);
+  }, [portfolioItems, autoPublishLive, isAdminAuthenticated]);
 
   useEffect(() => {
     try {

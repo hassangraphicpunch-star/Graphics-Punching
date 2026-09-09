@@ -1,0 +1,63 @@
+[
+  {
+    "id": "conv-visitor-xyz",
+    "visitorId": "visitor-xyz",
+    "visitorName": "Website Visitor",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-09T20:42:04.838Z",
+    "lastUpdatedAt": "2026-09-09T20:42:04.838Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "What are your digitizing turnaround times & rates?",
+    "lastEventType": "quick_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1788986524839-0",
+        "role": "user",
+        "senderName": "Website Visitor",
+        "content": "What are your digitizing turnaround times & rates?",
+        "timestamp": "08:42 PM",
+        "createdAt": "2026-09-09T20:42:04.839Z",
+        "type": "bot_reply"
+      }
+    ]
+  },
+  {
+    "id": "test-conv-1",
+    "visitorId": "visitor-xyz",
+    "visitorName": "Sarah Miller",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-09T20:41:57.758Z",
+    "lastUpdatedAt": "2026-09-09T20:42:02.681Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hi Sarah! Our jacket back digitizing rates start at $15 with 4-6 hour turnaround.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1788986517771-h3uj",
+        "role": "user",
+        "senderName": "Sarah Miller",
+        "content": "Hello, what is your rate for a jacket back embroidery digitizing?",
+        "timestamp": "08:41 PM",
+        "createdAt": "2026-09-09T20:41:57.758Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-admin-1788986522681",
+        "role": "admin",
+        "senderName": "Graphics Punching Support Desk",
+        "content": "Hi Sarah! Our jacket back digitizing rates start at $15 with 4-6 hour turnaround.",
+        "timestamp": "08:42 PM",
+        "createdAt": "2026-09-09T20:42:02.681Z",
+        "type": "admin_reply"
+      }
+    ]
+  }
+]

@@ -55,6 +55,32 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
   const [isLoading, setIsLoading] = useState(false);
   const [notificationToast, setNotificationToast] = useState<{ show: boolean; text: string } | null>(null);
 
+  const [conversationId] = useState<string>(() => {
+    try {
+      let cid = sessionStorage.getItem('gp_chat_conv_id');
+      if (!cid) {
+        cid = `conv-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+        sessionStorage.setItem('gp_chat_conv_id', cid);
+      }
+      return cid;
+    } catch {
+      return `conv-${Date.now()}`;
+    }
+  });
+
+  const [visitorId] = useState<string>(() => {
+    try {
+      let vid = localStorage.getItem('gp_visitor_id');
+      if (!vid) {
+        vid = `visitor-${Math.random().toString(36).substring(2, 8)}`;
+        localStorage.setItem('gp_visitor_id', vid);
+      }
+      return vid;
+    } catch {
+      return `visitor-${Date.now().toString(36)}`;
+    }
+  });
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     return [
       {
@@ -70,6 +96,47 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Real-time SSE listener for live replies sent by the Administrator from the Portal
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/site/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const packet = JSON.parse(event.data);
+          if (
+            packet.type === 'chatbot_admin_reply' &&
+            packet.conversationId === conversationId &&
+            packet.adminMessage
+          ) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === packet.adminMessage.id)) return prev;
+              return [
+                ...prev,
+                {
+                  id: packet.adminMessage.id,
+                  role: 'assistant',
+                  content: `🛡️ **Administrator**: ${packet.adminMessage.content}`,
+                  timestamp:
+                    packet.adminMessage.timestamp ||
+                    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                },
+              ];
+            });
+            setHasUnread(true);
+          }
+        } catch {
+          // Ignore non-JSON packet
+        }
+      };
+    } catch (e) {
+      console.warn('SSE client error in chatbot:', e);
+    }
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, [conversationId]);
 
   // Helper to automatically notify administrator via email on chatbot interactions
   const notifyAdminOfInteraction = async ({
@@ -112,6 +179,8 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       .join(', ') || 'graphicspunching264@gmail.com';
 
     const sessionInfo = {
+      conversationId,
+      visitorId,
       url: window.location.href,
       path: window.location.hash || window.location.pathname,
       platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
@@ -222,7 +291,31 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     setInputMessage('');
     setIsLoading(true);
 
-    // Automatically send notification email to administrator
+    // 1. Immediately persist visitor message to server real-time chat store
+    try {
+      fetch('/api/chatbot/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          visitorId,
+          visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
+          message: text,
+          role: 'user',
+          type: sourceType,
+          sessionInfo: {
+            conversationId,
+            visitorId,
+            url: window.location.href,
+            platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
+          },
+        }),
+      }).catch((e) => console.warn('Chat message server sync warning:', e));
+    } catch (postErr) {
+      console.warn('Could not post chat message:', postErr);
+    }
+
+    // 2. Automatically send notification email to administrator
     notifyAdminOfInteraction({
       selectedInquiry: text,
       eventType: sourceType,
@@ -268,6 +361,20 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+
+      // Record assistant answer on server
+      fetch('/api/chatbot/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          visitorId,
+          message: replyText,
+          role: 'assistant',
+          type: 'assistant_reply',
+          suggestedAction: data.suggestedAction,
+        }),
+      }).catch(() => {});
     } catch (err) {
       console.warn('Chat request failed, using intelligent client response:', err);
       // Client-side fallback if network or endpoint fails
@@ -282,6 +389,20 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
           suggestedAction: fallbackReply.suggestedAction,
         },
       ]);
+
+      // Record fallback answer on server
+      fetch('/api/chatbot/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          visitorId,
+          message: fallbackReply.content,
+          role: 'assistant',
+          type: 'assistant_reply',
+          suggestedAction: fallbackReply.suggestedAction,
+        }),
+      }).catch(() => {});
     } finally {
       setIsLoading(false);
     }
@@ -292,16 +413,44 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
   };
 
   const handleMessageClick = (msg: ChatMessage) => {
+    const text = `[Topic Inquiry] "${msg.content.slice(0, 150)}" [${msg.role}]`;
+    fetch('/api/chatbot/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId,
+        visitorId,
+        visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
+        message: text,
+        role: 'user',
+        type: 'message_click',
+      }),
+    }).catch(() => {});
+
     notifyAdminOfInteraction({
-      selectedInquiry: `Selected Message Topic: "${msg.content.slice(0, 150)}" [${msg.role}]`,
+      selectedInquiry: text,
       eventType: 'message_click',
       conversationSnapshot: messages,
     });
   };
 
   const handleHeaderQuoteClick = () => {
+    const text = '⚡ Requested Instant Quote via Header Shortcut';
+    fetch('/api/chatbot/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId,
+        visitorId,
+        visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
+        message: text,
+        role: 'user',
+        type: 'quick_action',
+      }),
+    }).catch(() => {});
+
     notifyAdminOfInteraction({
-      selectedInquiry: '⚡ Request Instant Quote (Header Shortcut)',
+      selectedInquiry: text,
       eventType: 'quick_action',
       actionDetails: { type: 'quote', source: 'header' },
       conversationSnapshot: messages,

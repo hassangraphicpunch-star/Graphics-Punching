@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   Mail,
@@ -18,6 +18,7 @@ import {
   Clock,
   Radio,
   Loader2,
+  MessageSquare,
 } from 'lucide-react';
 import { useWebsiteSettings } from '../context/AdminSettingsContext';
 import { AdminAuthGate } from './admin/AdminAuthGate';
@@ -25,6 +26,7 @@ import { WebsiteSettingsManager } from './admin/WebsiteSettingsManager';
 import { EmailChatbotWorkspace } from './admin/EmailChatbotWorkspace';
 import { EmailHistoryLogs } from './admin/EmailHistoryLogs';
 import { ContactsDatabase } from './admin/ContactsDatabase';
+import { LiveVisitorChatInbox } from './admin/LiveVisitorChatInbox';
 
 export const AdminPortal: React.FC = () => {
   const {
@@ -44,9 +46,62 @@ export const AdminPortal: React.FC = () => {
   } = useWebsiteSettings();
 
   const [activeMainSection, setActiveMainSection] = useState<
-    'settings' | 'chatbot' | 'history' | 'contacts'
+    'settings' | 'live-chat' | 'chatbot' | 'history' | 'contacts'
   >('settings');
   const [publishFeedback, setPublishFeedback] = useState<string | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+  const [incomingChatAlert, setIncomingChatAlert] = useState<{
+    visitorName: string;
+    text: string;
+  } | null>(null);
+
+  // Synchronize unread chat count in real time via SSE & API
+  useEffect(() => {
+    // 1. Initial count fetch
+    fetch('/api/chatbot/conversations?_t=' + Date.now())
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success && typeof d.totalUnread === 'number') {
+          setUnreadChatCount(d.totalUnread);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Real-time SSE listener
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/site/events');
+      eventSource.onmessage = (event) => {
+        try {
+          const packet = JSON.parse(event.data);
+          if (packet.type === 'chatbot_conversation_update') {
+            if (typeof packet.totalUnread === 'number') {
+              setUnreadChatCount(packet.totalUnread);
+            }
+            if (packet.newMessage?.role === 'user') {
+              setIncomingChatAlert({
+                visitorName: packet.conversation?.visitorName || 'Website Visitor',
+                text: packet.newMessage.content?.slice(0, 100) || 'Sent a new message',
+              });
+              setTimeout(() => setIncomingChatAlert(null), 8000);
+            }
+          } else if (packet.type === 'chatbot_unread_update') {
+            if (typeof packet.totalUnread === 'number') {
+              setUnreadChatCount(packet.totalUnread);
+            }
+          }
+        } catch {
+          // Ignore
+        }
+      };
+    } catch (e) {
+      console.warn('SSE subscription error in AdminPortal:', e);
+    }
+
+    return () => {
+      if (eventSource) eventSource.close();
+    };
+  }, []);
 
   const handleManualPublish = async () => {
     const res = await publishToLive({ note: 'Manual publish via Admin Command Portal' });
@@ -215,6 +270,27 @@ export const AdminPortal: React.FC = () => {
             </div>
           </div>
 
+          {incomingChatAlert && (
+            <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-400 text-xs text-white font-bold flex items-center justify-between gap-3 animate-bounce shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+                <span>
+                  <strong>⚡ Live Visitor Message:</strong> {incomingChatAlert.visitorName}: &ldquo;{incomingChatAlert.text}&rdquo;
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveMainSection('live-chat');
+                  setIncomingChatAlert(null);
+                }}
+                className="px-3 py-1 rounded-xl bg-[#FFC400] text-black font-black text-[11px] uppercase tracking-wider hover:bg-[#ffd233] shrink-0 cursor-pointer"
+              >
+                Open Chat Inbox →
+              </button>
+            </div>
+          )}
+
           {publishFeedback && (
             <div className="p-2.5 rounded-xl bg-zinc-900 border border-[#FFC400]/40 text-xs text-white font-bold flex items-center gap-2 animate-fadeIn">
               <CheckCircle2 className="w-4 h-4 text-[#FFC400]" />
@@ -231,6 +307,13 @@ export const AdminPortal: React.FC = () => {
               label: 'Website Settings & CMS',
               icon: Sliders,
               desc: 'Branding, text, pricing, portfolio, SEO & flags',
+            },
+            {
+              id: 'live-chat',
+              label: 'Live Visitor Chat',
+              icon: MessageSquare,
+              desc: 'Real-time visitor inquiries & instant 2-way desk',
+              badge: unreadChatCount > 0 ? unreadChatCount : undefined,
             },
             {
               id: 'chatbot',
@@ -258,26 +341,42 @@ export const AdminPortal: React.FC = () => {
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveMainSection(tab.id as any)}
-                className={`flex-1 min-w-[200px] flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left cursor-pointer ${
+                className={`flex-1 min-w-[200px] flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-left cursor-pointer relative ${
                   isActive
                     ? 'bg-[#FFC400] text-black shadow-lg'
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                 }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 relative ${
                     isActive ? 'bg-black text-[#FFC400]' : 'bg-zinc-800 text-zinc-300'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
+                  {tab.badge && !isActive && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#0c0c0e] animate-pulse" />
+                  )}
                 </div>
-                <div className="min-w-0">
-                  <div
-                    className={`text-xs font-black uppercase tracking-wider truncate ${
-                      isActive ? 'text-black' : 'text-white'
-                    }`}
-                  >
-                    {tab.label}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span
+                      className={`text-xs font-black uppercase tracking-wider truncate ${
+                        isActive ? 'text-black' : 'text-white'
+                      }`}
+                    >
+                      {tab.label}
+                    </span>
+                    {tab.badge && (
+                      <span
+                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-black uppercase tracking-tight shrink-0 ${
+                          isActive
+                            ? 'bg-black text-white'
+                            : 'bg-red-500 text-white animate-pulse'
+                        }`}
+                      >
+                        {tab.badge} NEW
+                      </span>
+                    )}
                   </div>
                   <div
                     className={`text-[10px] truncate ${
@@ -295,6 +394,9 @@ export const AdminPortal: React.FC = () => {
         {/* Dynamic Section Render */}
         <div className="min-h-[500px]">
           {activeMainSection === 'settings' && <WebsiteSettingsManager />}
+          {activeMainSection === 'live-chat' && (
+            <LiveVisitorChatInbox onComposeTo={handleDirectCompose} />
+          )}
           {activeMainSection === 'chatbot' && <EmailChatbotWorkspace />}
           {activeMainSection === 'history' && (
             <EmailHistoryLogs onComposeTo={handleDirectCompose} />

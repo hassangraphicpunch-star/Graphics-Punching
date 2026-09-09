@@ -35,8 +35,141 @@ try {
   console.warn('Could not initialize data directory:', err);
 }
 
-// In-memory cache of published live site data
+// In-memory cache of published live site data and chat conversations
 let inMemoryPublishedData: any = null;
+const CHAT_CONVERSATIONS_FILE = path.join(DATA_DIR, 'chat_conversations.json');
+let inMemoryChatConversations: any[] = [];
+
+// Deep merge utility for settings objects
+function deepMerge(target: any, source: any): any {
+  if (!source || typeof source !== 'object') return target;
+  if (!target || typeof target !== 'object') return source;
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] !== null &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key]) &&
+      target[key] &&
+      typeof target[key] === 'object' &&
+      !Array.isArray(target[key])
+    ) {
+      result[key] = deepMerge(target[key], source[key]);
+    } else if (source[key] !== undefined) {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+const BASELINE_SETTINGS = {
+  branding: {
+    siteName: 'Graphics Punching',
+    tagline: 'Master Vector Art & Embroidery Digitizing',
+    logoText: 'GRAPHICS PUNCHING',
+    primaryColor: '#FFC400',
+    accentColor: '#18181b',
+    fontDisplay: 'Montserrat, sans-serif',
+    fontBody: 'Inter, sans-serif',
+    darkThemeByDefault: true,
+  },
+  homepage: {
+    heroBadge: 'PREMIUM VECTOR ART & EMBROIDERY DIGITIZING',
+    heroHeadline: 'MASTER-CRAFTED APPAREL & VECTOR ARTWORK',
+    heroHeadlineHighlight: 'READY FOR PRESS & EMBROIDERY MACHINES',
+    heroSubtitle: 'Transform any sketch, raster image, or emblem into high-precision, production-ready manual vector files and machine-calibrated embroidery digitizing in as fast as 2 to 6 hours.',
+    heroCtaText: 'START CUSTOM QUOTE',
+    heroSecondaryCtaText: 'EXPLORE OUR WORK',
+    trustBadge1: 'PREMIUM',
+    trustBadge2: 'FAST',
+    trustBadge3: 'NO SETUP',
+  },
+  contact: {
+    email: 'graphicspunching264@gmail.com',
+    phone: '+1 (607) 205-0030',
+    whatsapp: '+1 (607) 205-0030',
+    workingHours: '24/7 Production Desk (Mon-Sat)',
+    address: 'Global High-Speed Production Studio & Digital Dispatch',
+    rushTurnaroundClaim: '2-6 Hours Available',
+    standardTurnaroundClaim: '12-24 Hours',
+  },
+  emailSettings: {
+    provider: 'gmail_workspace',
+    connectedEmail: 'graphicspunching264@gmail.com',
+    notificationEmail: 'graphicspunching264@gmail.com',
+    senderDisplayName: 'Graphics Punching Studio Desk',
+    enableAutoResponder: true,
+    autoResponderSubject: 'Thank you for choosing Graphics Punching - Order Evaluation Started',
+    autoResponderBody: 'Hello,\n\nWe have received your artwork and project request. Our production specialists are inspecting your design to ensure flawless machine calibration and razor-sharp output.\n\nWe will deliver your quote and production roadmap shortly.\n\nBest regards,\nGraphics Punching Support Team\nPhone: +1 (607) 205-0030',
+    quotePrefix: 'GP-QTE',
+    replyToName: 'Graphics Punching Dispatch',
+  },
+  social: {
+    facebook: 'https://www.facebook.com/profile.php?id=61593649506118',
+    instagram: 'https://www.instagram.com/graphicspunching/',
+    pinterest: 'https://www.pinterest.com/graphicspunching/?actingBusinessId=1113444845282202777',
+    linkedin: '',
+    youtube: '',
+    tiktok: '',
+    twitter: '',
+    whatsapp: '+16072050030',
+    website: 'https://www.graphicspunching.com',
+  },
+  watermark: {
+    enabled: true,
+    text: 'GRAPHICS PUNCHING • PROOF',
+    opacity: 0.22,
+    size: 20,
+    placement: 'diagonal',
+    color: '#ffffff',
+  },
+  sections: {
+    topContactBar: true,
+    hero: true,
+    heroStats: true,
+    beforeAfterSlider: true,
+    servicesGrid: true,
+    whyChooseUs: true,
+    processSteps: true,
+    pricingSection: true,
+    portfolioShowcase: true,
+    testimonials: true,
+    faqSection: true,
+    ctaBanner: true,
+    footerDirectory: true,
+    watermarkOverlay: true,
+  },
+  footer: {
+    description: 'Graphics Punching is the premier global studio specializing in custom apparel screen printing, high-precision manual vector conversions, and machine-tested embroidery digitizing for brands and decorators worldwide.',
+    copyrightText: `© ${new Date().getFullYear()} Graphics Punching. All rights reserved. Registered trademark.`,
+    disclaimerText: 'All company names, brand logos, and registered marks displayed in sample portfolios remain the sole property of their respective trademark holders and are showcased strictly for technique demonstration.',
+    addressSnippet: 'Global Digital Dispatch • Fast Worldwide Service & High-Speed Turnaround',
+    showMadeWithLove: true,
+    quickLinksTitle: 'Quick Directory',
+  },
+  chatbot: {
+    enabled: true,
+    botName: 'Punchy AI',
+    botRole: 'Graphics Punching Virtual Assistant',
+    welcomeMessage: 'Hello! I am Punchy AI, your 24/7 artwork and digitizing specialist. How can we elevate your apparel decoration today?',
+    quickPrompts: [
+      'What are your digitizing turnaround times & rates?',
+      'Which file formats do you deliver (DST, EMB, PES)?',
+      'How do custom patch orders and borders work?',
+      'Can you clean up a low-res image into high-res vector?',
+    ],
+    tone: 'friendly',
+    primaryColor: '#FFC400',
+    showAvatar: true,
+    position: 'bottom-right',
+    supportEmail: 'graphicspunching264@gmail.com',
+    supportPhone: '+1 (607) 205-0030',
+    autoOpenDelaySeconds: 0,
+    enableInstantQuoteShortcut: true,
+    notifyAdminOnInquiry: true,
+    adminNotificationEmail: 'graphicspunching264@gmail.com',
+  },
+};
 
 function loadPublishedDataFromDisk() {
   try {
@@ -50,38 +183,48 @@ function loadPublishedDataFromDisk() {
   }
 }
 
-// Initial load
-loadPublishedDataFromDisk();
-
-function initializePublishedDataIfMissing() {
+function loadChatConversationsFromDisk() {
   try {
-    if (!inMemoryPublishedData) {
-      const now = new Date().toISOString();
-      const initialData = {
-        settings: {},
-        portfolioItems: [],
-        leads: [],
-        emailLogs: [],
-        publishedAt: now,
-        version: 1,
-        publishNote: 'Authoritative baseline site data initialized',
-      };
-      savePublishedDataToDisk(initialData);
-      console.log('Initialized baseline published site data on server disk.');
+    if (fs.existsSync(CHAT_CONVERSATIONS_FILE)) {
+      const raw = fs.readFileSync(CHAT_CONVERSATIONS_FILE, 'utf-8');
+      inMemoryChatConversations = JSON.parse(raw);
+      if (!Array.isArray(inMemoryChatConversations)) {
+        inMemoryChatConversations = [];
+      }
+      console.log(`Loaded ${inMemoryChatConversations.length} chat conversations from disk.`);
+    } else {
+      inMemoryChatConversations = [];
     }
   } catch (err) {
-    console.warn('Could not initialize published site data:', err);
+    console.error('Error reading chat conversations file:', err);
+    inMemoryChatConversations = [];
   }
 }
 
-initializePublishedDataIfMissing();
+function saveChatConversationsToDisk(conversations: any[]): boolean {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const tempFile = `${CHAT_CONVERSATIONS_FILE}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempFile, JSON.stringify(conversations, null, 2), 'utf-8');
+    fs.renameSync(tempFile, CHAT_CONVERSATIONS_FILE);
+    inMemoryChatConversations = conversations;
+    return true;
+  } catch (err) {
+    console.error('Error saving chat conversations to disk:', err);
+    return false;
+  }
+}
 
 function savePublishedDataToDisk(data: any): boolean {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(PUBLISHED_DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    const tempFile = `${PUBLISHED_DATA_FILE}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tempFile, PUBLISHED_DATA_FILE);
     inMemoryPublishedData = data;
     return true;
   } catch (err) {
@@ -89,6 +232,41 @@ function savePublishedDataToDisk(data: any): boolean {
     return false;
   }
 }
+
+// Initial load
+loadPublishedDataFromDisk();
+loadChatConversationsFromDisk();
+
+function initializePublishedDataIfMissing() {
+  try {
+    const needsSeeding =
+      !inMemoryPublishedData ||
+      !inMemoryPublishedData.settings ||
+      Object.keys(inMemoryPublishedData.settings).length < 5;
+
+    if (needsSeeding) {
+      const now = new Date().toISOString();
+      const initialData = {
+        settings: deepMerge(BASELINE_SETTINGS, inMemoryPublishedData?.settings || {}),
+        portfolioItems:
+          Array.isArray(inMemoryPublishedData?.portfolioItems) && inMemoryPublishedData.portfolioItems.length > 0
+            ? inMemoryPublishedData.portfolioItems
+            : [],
+        leads: Array.isArray(inMemoryPublishedData?.leads) ? inMemoryPublishedData.leads : [],
+        emailLogs: Array.isArray(inMemoryPublishedData?.emailLogs) ? inMemoryPublishedData.emailLogs : [],
+        publishedAt: now,
+        version: (inMemoryPublishedData?.version || 0) + 1,
+        publishNote: 'Authoritative baseline site data initialized and synchronized',
+      };
+      savePublishedDataToDisk(initialData);
+      console.log('Seeded complete authoritative baseline published site data on server disk.');
+    }
+  } catch (err) {
+    console.warn('Could not initialize published site data:', err);
+  }
+}
+
+initializePublishedDataIfMissing();
 
 // Real-Time Server-Sent Events (SSE) Live Broadcast Pool
 const sseClients = new Set<express.Response>();
@@ -159,13 +337,22 @@ app.get('/api/site/events', (req, res) => {
 
 // 3. Fetch Live Published Website Data (Called by all live visitors on load)
 app.get('/api/site/data', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+
   if (inMemoryPublishedData) {
+    const safeData = {
+      ...inMemoryPublishedData,
+      settings: deepMerge(BASELINE_SETTINGS, inMemoryPublishedData.settings || {}),
+    };
     return res.json({
       success: true,
       hasCustomData: true,
       publishedAt: inMemoryPublishedData.publishedAt,
       version: inMemoryPublishedData.version || 1,
-      data: inMemoryPublishedData,
+      data: safeData,
     });
   }
 
@@ -173,23 +360,41 @@ app.get('/api/site/data', (req, res) => {
   if (fs.existsSync(PUBLISHED_DATA_FILE)) {
     loadPublishedDataFromDisk();
     if (inMemoryPublishedData) {
+      const safeData = {
+        ...inMemoryPublishedData,
+        settings: deepMerge(BASELINE_SETTINGS, inMemoryPublishedData.settings || {}),
+      };
       return res.json({
         success: true,
         hasCustomData: true,
         publishedAt: inMemoryPublishedData.publishedAt,
         version: inMemoryPublishedData.version || 1,
-        data: inMemoryPublishedData,
+        data: safeData,
       });
     }
   }
 
-  // No published override on disk yet; return empty flag so client uses baseline defaults
+  // No published override on disk yet; return baseline defaults
   res.json({
     success: true,
     hasCustomData: false,
     publishedAt: null,
     version: 0,
-    data: null,
+    data: {
+      settings: BASELINE_SETTINGS,
+      portfolioItems: [],
+      leads: [],
+      emailLogs: [],
+    },
+  });
+});
+
+app.get('/api/site/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.json({
+    success: true,
+    version: inMemoryPublishedData?.version || 0,
+    publishedAt: inMemoryPublishedData?.publishedAt || null,
   });
 });
 
@@ -226,9 +431,19 @@ function handlePublishRequest(req: express.Request, res: express.Response) {
     const currentVersion = (inMemoryPublishedData?.version || 0) + 1;
     const publishedAt = new Date().toISOString();
 
+    const mergedSettings = deepMerge(
+      BASELINE_SETTINGS,
+      deepMerge(inMemoryPublishedData?.settings || {}, effectiveSettings || {})
+    );
+
+    const mergedPortfolio =
+      Array.isArray(effectivePortfolio) && effectivePortfolio.length > 0
+        ? effectivePortfolio
+        : inMemoryPublishedData?.portfolioItems || [];
+
     const newPublishedData = {
-      settings: effectiveSettings || inMemoryPublishedData?.settings || {},
-      portfolioItems: effectivePortfolio || inMemoryPublishedData?.portfolioItems || [],
+      settings: mergedSettings,
+      portfolioItems: mergedPortfolio,
       leads: effectiveLeads || inMemoryPublishedData?.leads || [],
       emailLogs: effectiveEmailLogs || inMemoryPublishedData?.emailLogs || [],
       publishedAt,
@@ -261,6 +476,7 @@ function handlePublishRequest(req: express.Request, res: express.Response) {
       publishedAt,
       version: currentVersion,
       activeClientsNotified: sseClients.size,
+      data: newPublishedData,
     });
   } catch (error: any) {
     console.error('Error in publish handler:', error);
@@ -777,7 +993,7 @@ How can I assist you with your project today? Feel free to ask about pricing, tu
 }
 
 // 7b. AI Chatbot Assistant Endpoint (Powered by Gemini with Domain Knowledge & Intelligent Fallback)
-app.post(['/api/gemini/chat', '/api/chatbot/message'], async (req, res) => {
+app.post(['/api/gemini/chat', '/api/chatbot/ask', '/api/chatbot/generate'], async (req, res) => {
   try {
     const { settings = {}, context = {} } = req.body;
     let messages = req.body.messages;
@@ -933,6 +1149,8 @@ app.post('/api/chatbot/notify-admin', async (req, res) => {
       adminEmail = 'graphicspunching264@gmail.com',
       actionDetails,
       sessionInfo = {},
+      visitorId,
+      visitorName,
     } = req.body;
 
     if (!selectedInquiry || !selectedInquiry.toString().trim()) {
@@ -1035,6 +1253,70 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         ? recipients.join(', ')
         : 'graphicspunching264@gmail.com';
 
+    // Also ensure conversation is recorded in persistent inMemoryChatConversations
+    try {
+      const convId = sessionInfo?.conversationId || (visitorId ? `conv-${visitorId}` : `conv-${Date.now()}`);
+      let existingConv = inMemoryChatConversations.find((c) => c.id === convId);
+
+      const formattedMessages = Array.isArray(conversation)
+        ? conversation.map((msg: any, i: number) => ({
+            id: msg.id || `msg-${Date.now()}-${i}`,
+            role: msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant',
+            senderName: msg.sender === 'user' || msg.role === 'user' ? (visitorName || 'Website Visitor') : 'Punchy AI',
+            content: msg.text || msg.content || '',
+            timestamp: msg.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            createdAt: msg.createdAt || new Date().toISOString(),
+            type: msg.type || (msg.sender === 'user' ? eventType : 'bot_reply'),
+            suggestedAction: msg.suggestedAction,
+          }))
+        : [];
+
+      if (existingConv) {
+        existingConv.messages = formattedMessages.length > 0 ? formattedMessages : existingConv.messages;
+        existingConv.lastMessage = cleanedInquiry || existingConv.lastMessage;
+        existingConv.lastUpdatedAt = nowIso;
+        existingConv.lastEventType = eventType;
+        existingConv.unreadForAdmin = (existingConv.unreadForAdmin || 0) + 1;
+        if (sessionInfo) existingConv.sessionInfo = { ...existingConv.sessionInfo, ...sessionInfo };
+      } else {
+        existingConv = {
+          id: convId,
+          visitorId: visitorId || `visitor-${Date.now().toString(36)}`,
+          visitorName: visitorName || 'Website Visitor',
+          visitorEmail: sessionInfo?.visitorEmail || '',
+          visitorPhone: sessionInfo?.visitorPhone || '',
+          startedAt: nowIso,
+          lastUpdatedAt: nowIso,
+          status: 'active',
+          unreadForAdmin: 1,
+          unreadForVisitor: 0,
+          lastMessage: cleanedInquiry,
+          lastEventType: eventType,
+          sessionInfo: sessionInfo || {},
+          messages: formattedMessages,
+        };
+        inMemoryChatConversations.unshift(existingConv);
+      }
+
+      saveChatConversationsToDisk(inMemoryChatConversations);
+
+      const totalUnread = inMemoryChatConversations.reduce((acc, c) => acc + (c.unreadForAdmin || 0), 0);
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_conversation_update',
+        conversation: existingConv,
+        newMessage: {
+          id: `msg-${Date.now()}`,
+          role: 'user',
+          content: cleanedInquiry,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          type: eventType,
+        },
+        totalUnread,
+      });
+    } catch (saveErr) {
+      console.warn('Could not record chat conversation in persistent store:', saveErr);
+    }
+
     return res.json({
       success: true,
       message: 'Admin notification email dispatched successfully',
@@ -1058,6 +1340,239 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
       success: false,
       error: error?.message || 'Failed to dispatch chatbot admin notification',
     });
+  }
+});
+
+// ======================================================================
+// REAL-TIME VISITOR CHATBOT INBOX & SYNCHRONIZATION ENDPOINTS
+// ======================================================================
+
+// Fetch All Chat Conversations with unread metrics
+app.get('/api/chatbot/conversations', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  const totalUnread = inMemoryChatConversations.reduce(
+    (acc, c) => acc + (c.unreadForAdmin || 0),
+    0
+  );
+
+  res.json({
+    success: true,
+    conversations: inMemoryChatConversations,
+    totalUnread,
+    serverTime: new Date().toISOString(),
+  });
+});
+
+// Post a new visitor message, quick reply, or inquiry to a conversation
+app.post('/api/chatbot/message', (req, res) => {
+  try {
+    const {
+      conversationId,
+      visitorId,
+      visitorName,
+      visitorEmail,
+      visitorPhone,
+      message,
+      content,
+      text,
+      role = 'user',
+      type = 'user_message',
+      sessionInfo,
+      suggestedAction,
+    } = req.body;
+
+    const rawMsg = message || content || text;
+
+    if (!rawMsg || (typeof rawMsg !== 'string' && typeof rawMsg.content !== 'string' && typeof rawMsg.text !== 'string')) {
+      return res.status(400).json({ success: false, error: 'Message content is required.' });
+    }
+
+    const messageText = typeof rawMsg === 'string' ? rawMsg : (rawMsg.content || rawMsg.text || '');
+    const nowIso = new Date().toISOString();
+    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const messageItem = {
+      id: (rawMsg && typeof rawMsg === 'object' && rawMsg.id) || req.body.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      role: role as any,
+      senderName: role === 'user' ? (visitorName || 'Website Visitor') : 'Punchy AI',
+      content: messageText,
+      timestamp: formattedTime,
+      createdAt: nowIso,
+      type: type || 'user_message',
+      suggestedAction: suggestedAction || (rawMsg && typeof rawMsg === 'object' ? rawMsg.suggestedAction : undefined),
+    };
+
+    const convId = conversationId || (visitorId ? `conv-${visitorId}` : `conv-${Date.now()}`);
+    let conv = inMemoryChatConversations.find((c) => c.id === convId);
+
+    if (!conv) {
+      conv = {
+        id: convId,
+        visitorId: visitorId || `visitor-${Date.now().toString(36)}`,
+        visitorName: visitorName || 'Website Visitor',
+        visitorEmail: visitorEmail || '',
+        visitorPhone: visitorPhone || '',
+        startedAt: nowIso,
+        lastUpdatedAt: nowIso,
+        status: 'active',
+        unreadForAdmin: role === 'user' ? 1 : 0,
+        unreadForVisitor: 0,
+        lastMessage: messageText,
+        lastEventType: type,
+        sessionInfo: sessionInfo || {},
+        messages: [messageItem],
+      };
+      inMemoryChatConversations.unshift(conv);
+    } else {
+      conv.messages.push(messageItem);
+      conv.lastMessage = messageText;
+      conv.lastUpdatedAt = nowIso;
+      conv.lastEventType = type;
+      if (visitorName) conv.visitorName = visitorName;
+      if (visitorEmail) conv.visitorEmail = visitorEmail;
+      if (visitorPhone) conv.visitorPhone = visitorPhone;
+      if (sessionInfo) conv.sessionInfo = { ...conv.sessionInfo, ...sessionInfo };
+
+      if (role === 'user') {
+        conv.unreadForAdmin = (conv.unreadForAdmin || 0) + 1;
+        conv.status = 'active';
+      }
+    }
+
+    saveChatConversationsToDisk(inMemoryChatConversations);
+
+    const totalUnread = inMemoryChatConversations.reduce((acc, c) => acc + (c.unreadForAdmin || 0), 0);
+
+    // Real-time broadcast to Admin Portal & open visitor windows
+    broadcastLiveSiteUpdate({
+      type: 'chatbot_conversation_update',
+      conversation: conv,
+      newMessage: messageItem,
+      totalUnread,
+    });
+
+    res.json({
+      success: true,
+      conversation: conv,
+      message: messageItem,
+      totalUnread,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/chatbot/message:', error);
+    res.status(500).json({ success: false, error: error?.message || 'Failed to record chat message' });
+  }
+});
+
+// Administrator replies live to a visitor
+app.post('/api/chatbot/reply', (req, res) => {
+  try {
+    const { conversationId, replyText, adminName = 'Graphics Punching Support Desk' } = req.body;
+
+    if (!conversationId || !replyText || !replyText.trim()) {
+      return res.status(400).json({ success: false, error: 'conversationId and replyText are required.' });
+    }
+
+    const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
+    if (!conv) {
+      return res.status(404).json({ success: false, error: 'Conversation not found.' });
+    }
+
+    const nowIso = new Date().toISOString();
+    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const adminMessage = {
+      id: `msg-admin-${Date.now()}`,
+      role: 'admin',
+      senderName: adminName,
+      content: replyText.trim(),
+      timestamp: formattedTime,
+      createdAt: nowIso,
+      type: 'admin_reply',
+    };
+
+    conv.messages.push(adminMessage);
+    conv.lastMessage = `[Admin] ${replyText.trim()}`;
+    conv.lastUpdatedAt = nowIso;
+    conv.lastEventType = 'admin_reply';
+    conv.unreadForAdmin = 0;
+    conv.unreadForVisitor = (conv.unreadForVisitor || 0) + 1;
+
+    saveChatConversationsToDisk(inMemoryChatConversations);
+
+    // Broadcast live event to visitor widget and admin tabs
+    broadcastLiveSiteUpdate({
+      type: 'chatbot_admin_reply',
+      conversationId: conv.id,
+      conversation: conv,
+      adminMessage,
+    });
+
+    res.json({
+      success: true,
+      conversation: conv,
+      adminMessage,
+    });
+  } catch (error: any) {
+    console.error('Error in /api/chatbot/reply:', error);
+    res.status(500).json({ success: false, error: error?.message || 'Failed to send admin reply' });
+  }
+});
+
+// Mark conversation as read by administrator
+app.post('/api/chatbot/mark-read', (req, res) => {
+  try {
+    const { conversationId } = req.body;
+    if (!conversationId) {
+      return res.status(400).json({ success: false, error: 'conversationId is required.' });
+    }
+
+    const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
+    if (conv) {
+      conv.unreadForAdmin = 0;
+      saveChatConversationsToDisk(inMemoryChatConversations);
+    }
+
+    const totalUnread = inMemoryChatConversations.reduce((acc, c) => acc + (c.unreadForAdmin || 0), 0);
+
+    broadcastLiveSiteUpdate({
+      type: 'chatbot_unread_update',
+      conversationId,
+      totalUnread,
+    });
+
+    res.json({ success: true, conversationId, totalUnread });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message });
+  }
+});
+
+// Clear or Archive a conversation
+app.post('/api/chatbot/clear-or-archive', (req, res) => {
+  try {
+    const { conversationId, action = 'archive' } = req.body;
+    if (!conversationId) {
+      return res.status(400).json({ success: false, error: 'conversationId is required.' });
+    }
+
+    if (action === 'delete') {
+      inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== conversationId);
+    } else {
+      const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
+      if (conv) conv.status = 'archived';
+    }
+
+    saveChatConversationsToDisk(inMemoryChatConversations);
+
+    broadcastLiveSiteUpdate({
+      type: 'chatbot_conversations_refresh',
+    });
+
+    res.json({ success: true, conversationId, action });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message });
   }
 });
 
