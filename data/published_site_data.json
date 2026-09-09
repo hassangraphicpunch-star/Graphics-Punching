@@ -3,7 +3,21 @@
     "siteName": "Graphics Punching"
   },
   "portfolioItems": [],
-  "leads": [],
+  "leads": [
+    {
+      "id": "lead-1788984508100-phmb",
+      "name": "System Health Check",
+      "email": "graphicspunching264@gmail.com",
+      "phone": "6072050030",
+      "company": "",
+      "serviceInterested": "Embroidery Digitizing",
+      "projectDetails": "Verification test",
+      "date": "2026-09-09T20:08:28.100Z",
+      "status": "new",
+      "source": "Website Quote Form",
+      "estimateTotal": null
+    }
+  ],
   "emailLogs": [],
   "publishedAt": "2026-09-03T18:43:14.261Z",
   "version": 6,
