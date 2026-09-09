@@ -33,7 +33,15 @@ interface EmailAssistantResponse {
   subjects?: string[];
 }
 
-export const EmailChatbotWorkspace: React.FC = () => {
+interface EmailChatbotWorkspaceProps {
+  onOpenLiveChat?: () => void;
+  unreadChatCount?: number;
+}
+
+export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
+  onOpenLiveChat,
+  unreadChatCount = 0,
+}) => {
   const { settings, leads, addEmailLog, emailLogs } = useWebsiteSettings();
 
   // Assistant & Chat State
@@ -383,6 +391,31 @@ export const EmailChatbotWorkspace: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Live Visitor Chat Quick Link Banner */}
+      {onOpenLiveChat && (
+        <div className="bg-zinc-900/90 border border-zinc-800 hover:border-zinc-700 rounded-2xl p-3 sm:px-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <MessageSquare className="w-4 h-4 text-[#FFC400]" />
+            <span className="text-zinc-300 font-medium">
+              Looking for incoming website visitor messages? The <strong className="text-white">Live Visitor Chat Inbox</strong> records all real-time customer inquiries from your website.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenLiveChat}
+            className="px-3 py-1.5 rounded-xl bg-[#FFC400] hover:bg-[#ffcd1a] text-black font-black uppercase tracking-wider text-[11px] flex items-center gap-1.5 cursor-pointer shrink-0 transition-all shadow-md"
+          >
+            <span>Switch to Live Visitor Chat</span>
+            {unreadChatCount > 0 && (
+              <span className="bg-black text-white px-1.5 py-0.2 rounded-full text-[10px]">
+                {unreadChatCount} NEW
+              </span>
+            )}
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Success Notification Banner */}
       {sendSuccessToast.show && (
         <div className="bg-emerald-500 text-black p-4 rounded-2xl font-bold shadow-2xl flex items-center justify-between animate-slideUp">

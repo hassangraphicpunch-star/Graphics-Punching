@@ -55,50 +55,79 @@ export const AdminPortal: React.FC = () => {
     text: string;
   } | null>(null);
 
-  // Synchronize unread chat count in real time via SSE & API
+  // Synchronize unread chat count in real time via SSE & API with continuous 4s polling
   useEffect(() => {
-    // 1. Initial count fetch
-    fetch('/api/chatbot/conversations?_t=' + Date.now())
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.success && typeof d.totalUnread === 'number') {
-          setUnreadChatCount(d.totalUnread);
+    let isMounted = true;
+
+    // 1. Polling function for unread count
+    const checkUnreadCount = async () => {
+      try {
+        const r = await fetch('/api/chatbot/conversations?_t=' + Date.now());
+        if (r.ok) {
+          const d = await r.json();
+          if (isMounted && d.success && typeof d.totalUnread === 'number') {
+            setUnreadChatCount(d.totalUnread);
+          }
         }
-      })
-      .catch(() => {});
+      } catch {}
+    };
+
+    checkUnreadCount();
+    const interval = setInterval(checkUnreadCount, 4000);
 
     // 2. Real-time SSE listener
     let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/site/events');
-      eventSource.onmessage = (event) => {
-        try {
-          const packet = JSON.parse(event.data);
-          if (packet.type === 'chatbot_conversation_update') {
-            if (typeof packet.totalUnread === 'number') {
-              setUnreadChatCount(packet.totalUnread);
+    let reconnectTimeout: any = null;
+
+    const connectSSE = () => {
+      if (!isMounted) return;
+      try {
+        eventSource = new EventSource('/api/site/events');
+        eventSource.onmessage = (event) => {
+          try {
+            const packet = JSON.parse(event.data);
+            if (packet.type === 'chatbot_conversation_update') {
+              if (typeof packet.totalUnread === 'number') {
+                setUnreadChatCount(packet.totalUnread);
+              }
+              if (packet.newMessage?.role === 'user') {
+                setIncomingChatAlert({
+                  visitorName: packet.conversation?.visitorName || 'Website Visitor',
+                  text: packet.newMessage.content?.slice(0, 100) || 'Sent a new message',
+                });
+                setTimeout(() => setIncomingChatAlert(null), 8000);
+              }
+            } else if (packet.type === 'chatbot_unread_update') {
+              if (typeof packet.totalUnread === 'number') {
+                setUnreadChatCount(packet.totalUnread);
+              }
             }
-            if (packet.newMessage?.role === 'user') {
-              setIncomingChatAlert({
-                visitorName: packet.conversation?.visitorName || 'Website Visitor',
-                text: packet.newMessage.content?.slice(0, 100) || 'Sent a new message',
-              });
-              setTimeout(() => setIncomingChatAlert(null), 8000);
-            }
-          } else if (packet.type === 'chatbot_unread_update') {
-            if (typeof packet.totalUnread === 'number') {
-              setUnreadChatCount(packet.totalUnread);
-            }
+          } catch {
+            // Ignore
           }
-        } catch {
-          // Ignore
-        }
-      };
-    } catch (e) {
-      console.warn('SSE subscription error in AdminPortal:', e);
-    }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (isMounted) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connectSSE, 5000);
+          }
+        };
+      } catch (e) {
+        console.warn('SSE subscription error in AdminPortal:', e);
+      }
+    };
+
+    connectSSE();
 
     return () => {
+      isMounted = false;
+      clearInterval(interval);
+      clearTimeout(reconnectTimeout);
       if (eventSource) eventSource.close();
     };
   }, []);
@@ -310,16 +339,16 @@ export const AdminPortal: React.FC = () => {
             },
             {
               id: 'live-chat',
-              label: 'Live Visitor Chat',
+              label: 'Live Visitor Chat Inbox',
               icon: MessageSquare,
               desc: 'Real-time visitor inquiries & instant 2-way desk',
               badge: unreadChatCount > 0 ? unreadChatCount : undefined,
             },
             {
               id: 'chatbot',
-              label: 'Email Chatbot & Gmail Dispatch',
+              label: 'AI Email Copilot & Dispatch',
               icon: Sparkles,
-              desc: 'AI drafting copilot & connected Gmail',
+              desc: 'AI email drafting assistant & connected Gmail',
             },
             {
               id: 'history',
@@ -397,7 +426,12 @@ export const AdminPortal: React.FC = () => {
           {activeMainSection === 'live-chat' && (
             <LiveVisitorChatInbox onComposeTo={handleDirectCompose} />
           )}
-          {activeMainSection === 'chatbot' && <EmailChatbotWorkspace />}
+          {activeMainSection === 'chatbot' && (
+            <EmailChatbotWorkspace
+              onOpenLiveChat={() => setActiveMainSection('live-chat')}
+              unreadChatCount={unreadChatCount}
+            />
+          )}
           {activeMainSection === 'history' && (
             <EmailHistoryLogs onComposeTo={handleDirectCompose} />
           )}

@@ -78,8 +78,11 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     }
   };
 
-  // Fetch all chat conversations from server
-  const fetchConversations = async () => {
+  // Fetch all chat conversations from server with optional silent background mode
+  const fetchConversations = async (isBackground = false) => {
+    if (!isBackground && conversations.length === 0) {
+      setIsLoading(true);
+    }
     try {
       const res = await fetch(`/api/chatbot/conversations?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -87,82 +90,139 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.conversations)) {
-          setConversations(data.conversations);
+          setConversations((prev) => {
+            // Check if there are real changes to avoid unnecessary re-renders
+            if (
+              prev.length === data.conversations.length &&
+              JSON.stringify(prev) === JSON.stringify(data.conversations)
+            ) {
+              return prev;
+            }
+            return data.conversations;
+          });
+
           // Default select first conversation if none selected
-          if (!selectedConvId && data.conversations.length > 0) {
-            setSelectedConvId(data.conversations[0].id);
-          }
+          setSelectedConvId((currentSelected) => {
+            if (!currentSelected && data.conversations.length > 0) {
+              return data.conversations[0].id;
+            }
+            // If currently selected no longer exists, fallback to first
+            if (
+              currentSelected &&
+              !data.conversations.some((c: ChatConversation) => c.id === currentSelected) &&
+              data.conversations.length > 0
+            ) {
+              return data.conversations[0].id;
+            }
+            return currentSelected;
+          });
         }
       }
     } catch (err) {
       console.warn('Error fetching chat conversations:', err);
     } finally {
-      setIsLoading(false);
+      if (!isBackground) {
+        setIsLoading(false);
+      }
     }
   };
 
+  // Initial load and continuous 3-second background polling fallback
   useEffect(() => {
-    fetchConversations();
+    fetchConversations(false);
+    const interval = setInterval(() => {
+      fetchConversations(true);
+    }, 3000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Listen to real-time Server-Sent Events (SSE)
+  // Listen to real-time Server-Sent Events (SSE) with auto-reconnection
   useEffect(() => {
     let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/site/events');
+    let reconnectTimeout: any = null;
+    let isMounted = true;
 
-      eventSource.onmessage = (event) => {
-        try {
-          const packet = JSON.parse(event.data);
+    const connect = () => {
+      if (!isMounted) return;
+      try {
+        eventSource = new EventSource('/api/site/events');
 
-          if (packet.type === 'chatbot_conversation_update') {
-            const updatedConv: ChatConversation = packet.conversation;
-            const newMsg: ChatMessageItem = packet.newMessage;
+        eventSource.onmessage = (event) => {
+          try {
+            const packet = JSON.parse(event.data);
 
-            setConversations((prev) => {
-              const exists = prev.some((c) => c.id === updatedConv.id);
-              if (exists) {
-                return prev.map((c) => (c.id === updatedConv.id ? updatedConv : c));
-              } else {
-                return [updatedConv, ...prev];
-              }
-            });
+            if (packet.type === 'chatbot_conversation_update') {
+              const updatedConv: ChatConversation = packet.conversation;
+              const newMsg: ChatMessageItem = packet.newMessage;
 
-            // If user message, play chime and trigger visual toast
-            if (newMsg?.role === 'user') {
-              playChime();
-              setLastNotification({
-                title: `New Message from ${updatedConv.visitorName}`,
-                text: newMsg.content.slice(0, 80),
+              setConversations((prev) => {
+                const idx = prev.findIndex((c) => c.id === updatedConv.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = updatedConv;
+                  return next;
+                } else {
+                  return [updatedConv, ...prev];
+                }
               });
-              setTimeout(() => setLastNotification(null), 6000);
+
+              // If user message, play chime and trigger visual toast
+              if (newMsg?.role === 'user') {
+                playChime();
+                setLastNotification({
+                  title: `New Message from ${updatedConv.visitorName}`,
+                  text: newMsg.content.slice(0, 80),
+                });
+                setTimeout(() => setLastNotification(null), 6000);
+              }
+            } else if (packet.type === 'chatbot_admin_reply') {
+              const updatedConv: ChatConversation = packet.conversation;
+              setConversations((prev) => {
+                const idx = prev.findIndex((c) => c.id === updatedConv.id);
+                if (idx >= 0) {
+                  const next = [...prev];
+                  next[idx] = updatedConv;
+                  return next;
+                }
+                return [updatedConv, ...prev];
+              });
+            } else if (packet.type === 'chatbot_unread_update') {
+              if (packet.conversationId) {
+                setConversations((prev) =>
+                  prev.map((c) =>
+                    c.id === packet.conversationId ? { ...c, unreadForAdmin: 0 } : c
+                  )
+                );
+              }
+            } else if (packet.type === 'chatbot_conversations_refresh') {
+              fetchConversations(true);
             }
-          } else if (packet.type === 'chatbot_admin_reply') {
-            const updatedConv: ChatConversation = packet.conversation;
-            setConversations((prev) =>
-              prev.map((c) => (c.id === updatedConv.id ? updatedConv : c))
-            );
-          } else if (packet.type === 'chatbot_unread_update') {
-            if (packet.conversationId) {
-              setConversations((prev) =>
-                prev.map((c) =>
-                  c.id === packet.conversationId ? { ...c, unreadForAdmin: 0 } : c
-                )
-              );
-            }
-          } else if (packet.type === 'chatbot_conversations_refresh') {
-            fetchConversations();
+          } catch (e) {
+            console.warn('Error parsing SSE packet:', e);
           }
-        } catch (e) {
-          console.warn('Error parsing SSE packet:', e);
-        }
-      };
-    } catch (e) {
-      console.warn('SSE connection error in Chat Inbox:', e);
-    }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (isMounted) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connect, 4000);
+          }
+        };
+      } catch (e) {
+        console.warn('SSE connection error in Chat Inbox:', e);
+      }
+    };
+
+    connect();
 
     return () => {
+      isMounted = false;
       if (eventSource) eventSource.close();
+      clearTimeout(reconnectTimeout);
     };
   }, [soundEnabled]);
 
@@ -704,7 +764,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
                 {/* Live Message Stream */}
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 max-h-[460px]">
-                  {selectedConversation.messages.map((msg, idx) => {
+                  {(selectedConversation.messages || []).map((msg, idx) => {
                     const isUser = msg.role === 'user';
                     const isAssistant = msg.role === 'assistant';
                     const isAdmin = msg.role === 'admin';

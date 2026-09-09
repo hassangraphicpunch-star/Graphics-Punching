@@ -1,5 +1,72 @@
 [
   {
+    "id": "visitor-android-samsung-99",
+    "visitorId": "visitor-android-99",
+    "visitorName": "David Chen",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-09T20:58:24.263Z",
+    "lastUpdatedAt": "2026-09-09T20:58:47.981Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hi David! We specialize in 3D puff digitizing for Richardson 112 caps. The turnaround is 4-6 hours. Please email your logo vector or artwork to us and we will prepare your stitch file.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {
+      "url": "https://www.graphicspunching.com/#/pricing",
+      "platform": "Android 14 (Samsung Galaxy S24)"
+    },
+    "messages": [
+      {
+        "id": "msg-1788987504264-bk1j",
+        "role": "user",
+        "senderName": "David Chen",
+        "content": "Hello! I need a left-chest 3D puff embroidery file for Richardson 112 caps. My email is david.chen@apparelworks.com",
+        "timestamp": "08:58 PM",
+        "createdAt": "2026-09-09T20:58:24.263Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-admin-1788987527994",
+        "role": "admin",
+        "senderName": "Graphics Punching Support Desk",
+        "content": "Hi David! We specialize in 3D puff digitizing for Richardson 112 caps. The turnaround is 4-6 hours. Please email your logo vector or artwork to us and we will prepare your stitch file.",
+        "timestamp": "08:58 PM",
+        "createdAt": "2026-09-09T20:58:47.981Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
+    "id": "visitor-device-iphone-123",
+    "visitorId": "visitor-iphone",
+    "visitorName": "Alex Johnson (iPhone)",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-09T20:54:29.615Z",
+    "lastUpdatedAt": "2026-09-09T20:54:29.615Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Hi, I need 50 custom embroidered patches for a motorcycle club. Can you provide pricing and turnaround?",
+    "lastEventType": "user_message",
+    "sessionInfo": {
+      "url": "https://www.graphicspunching.com/#/services",
+      "platform": "iPhone iOS 17.4"
+    },
+    "messages": [
+      {
+        "id": "msg-1788987269629-bbxa",
+        "role": "user",
+        "senderName": "Alex Johnson (iPhone)",
+        "content": "Hi, I need 50 custom embroidered patches for a motorcycle club. Can you provide pricing and turnaround?",
+        "timestamp": "08:54 PM",
+        "createdAt": "2026-09-09T20:54:29.615Z",
+        "type": "user_message"
+      }
+    ]
+  },
+  {
     "id": "conv-visitor-xyz",
     "visitorId": "visitor-xyz",
     "visitorName": "Website Visitor",

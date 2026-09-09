@@ -100,43 +100,150 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
   // Real-time SSE listener for live replies sent by the Administrator from the Portal
   useEffect(() => {
     let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/site/events');
-      eventSource.onmessage = (event) => {
-        try {
-          const packet = JSON.parse(event.data);
-          if (
-            packet.type === 'chatbot_admin_reply' &&
-            packet.conversationId === conversationId &&
-            packet.adminMessage
-          ) {
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === packet.adminMessage.id)) return prev;
-              return [
-                ...prev,
-                {
-                  id: packet.adminMessage.id,
-                  role: 'assistant',
-                  content: `🛡️ **Administrator**: ${packet.adminMessage.content}`,
-                  timestamp:
-                    packet.adminMessage.timestamp ||
-                    new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                },
-              ];
-            });
-            setHasUnread(true);
+    let reconnectTimeout: any = null;
+    let isMounted = true;
+
+    const connect = () => {
+      if (!isMounted) return;
+      try {
+        eventSource = new EventSource('/api/site/events');
+        eventSource.onmessage = (event) => {
+          try {
+            const packet = JSON.parse(event.data);
+            if (
+              packet.type === 'chatbot_admin_reply' &&
+              packet.conversationId === conversationId &&
+              packet.adminMessage
+            ) {
+              setMessages((prev) => {
+                if (prev.some((m) => m.id === packet.adminMessage.id)) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: packet.adminMessage.id,
+                    role: 'assistant',
+                    content: `🛡️ **Administrator**: ${packet.adminMessage.content}`,
+                    timestamp:
+                      packet.adminMessage.timestamp ||
+                      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  },
+                ];
+              });
+              setHasUnread(true);
+            }
+          } catch {
+            // Ignore non-JSON packet
           }
-        } catch {
-          // Ignore non-JSON packet
-        }
-      };
-    } catch (e) {
-      console.warn('SSE client error in chatbot:', e);
-    }
+        };
+
+        eventSource.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (isMounted) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connect, 5000);
+          }
+        };
+      } catch (e) {
+        console.warn('SSE client error in chatbot:', e);
+      }
+    };
+
+    connect();
+
     return () => {
+      isMounted = false;
       if (eventSource) eventSource.close();
+      clearTimeout(reconnectTimeout);
     };
   }, [conversationId]);
+
+  // Restore conversation history from server on mount
+  useEffect(() => {
+    let isMounted = true;
+    const fetchExistingConversation = async () => {
+      try {
+        const res = await fetch(
+          `/api/chatbot/conversation?conversationId=${encodeURIComponent(
+            conversationId
+          )}&visitorId=${encodeURIComponent(visitorId)}&_t=${Date.now()}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (
+            isMounted &&
+            data.success &&
+            data.conversation &&
+            Array.isArray(data.conversation.messages) &&
+            data.conversation.messages.length > 0
+          ) {
+            const mapped: ChatMessage[] = data.conversation.messages.map((m: any) => ({
+              id: m.id,
+              role: m.role === 'admin' ? 'assistant' : m.role,
+              content: m.role === 'admin' ? `🛡️ **Administrator**: ${m.content}` : m.content,
+              timestamp: m.timestamp,
+              suggestedAction: m.suggestedAction,
+            }));
+            if (mapped.length > 0) {
+              setMessages(mapped);
+            }
+          }
+        }
+      } catch {
+        // Fallback silently to default welcome message
+      }
+    };
+
+    fetchExistingConversation();
+    return () => {
+      isMounted = false;
+    };
+  }, [conversationId, visitorId]);
+
+  // Gentle background poll every 6s while chat is open to ensure no admin reply is missed
+  useEffect(() => {
+    if (!isOpen) return;
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/chatbot/conversation?conversationId=${encodeURIComponent(
+            conversationId
+          )}&_t=${Date.now()}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          if (
+            data.success &&
+            data.conversation &&
+            Array.isArray(data.conversation.messages)
+          ) {
+            setMessages((prev) => {
+              const existingIds = new Set(prev.map((m) => m.id));
+              const newItems = data.conversation.messages.filter(
+                (m: any) => !existingIds.has(m.id)
+              );
+              if (newItems.length === 0) return prev;
+              const mappedNew: ChatMessage[] = newItems.map((m: any) => ({
+                id: m.id,
+                role: m.role === 'admin' ? 'assistant' : m.role,
+                content:
+                  m.role === 'admin'
+                    ? `🛡️ **Administrator**: ${m.content}`
+                    : m.content,
+                timestamp: m.timestamp,
+                suggestedAction: m.suggestedAction,
+              }));
+              return [...prev, ...mappedNew];
+            });
+          }
+        }
+      } catch {}
+    }, 6000);
+
+    return () => clearInterval(pollInterval);
+  }, [isOpen, conversationId]);
 
   // Helper to automatically notify administrator via email on chatbot interactions
   const notifyAdminOfInteraction = async ({
@@ -293,7 +400,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
 
     // 1. Immediately persist visitor message to server real-time chat store
     try {
-      fetch('/api/chatbot/message', {
+      await fetch('/api/chatbot/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -310,7 +417,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
             platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
           },
         }),
-      }).catch((e) => console.warn('Chat message server sync warning:', e));
+      });
     } catch (postErr) {
       console.warn('Could not post chat message:', postErr);
     }

@@ -1253,7 +1253,7 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         ? recipients.join(', ')
         : 'graphicspunching264@gmail.com';
 
-    // Also ensure conversation is recorded in persistent inMemoryChatConversations
+    // Also ensure conversation is recorded in persistent inMemoryChatConversations safely
     try {
       const convId = sessionInfo?.conversationId || (visitorId ? `conv-${visitorId}` : `conv-${Date.now()}`);
       let existingConv = inMemoryChatConversations.find((c) => c.id === convId);
@@ -1261,8 +1261,8 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
       const formattedMessages = Array.isArray(conversation)
         ? conversation.map((msg: any, i: number) => ({
             id: msg.id || `msg-${Date.now()}-${i}`,
-            role: msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant',
-            senderName: msg.sender === 'user' || msg.role === 'user' ? (visitorName || 'Website Visitor') : 'Punchy AI',
+            role: msg.role === 'admin' ? 'admin' : (msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant'),
+            senderName: msg.role === 'admin' ? (msg.senderName || 'Graphics Punching Support Desk') : (msg.sender === 'user' || msg.role === 'user' ? (visitorName || 'Website Visitor') : 'Punchy AI'),
             content: msg.text || msg.content || '',
             timestamp: msg.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             createdAt: msg.createdAt || new Date().toISOString(),
@@ -1272,11 +1272,19 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         : [];
 
       if (existingConv) {
-        existingConv.messages = formattedMessages.length > 0 ? formattedMessages : existingConv.messages;
+        // Merge missing messages rather than overwriting to preserve admin replies and history
+        if (formattedMessages.length > 0) {
+          const existingIds = new Set(existingConv.messages.map((m: any) => m.id));
+          for (const fm of formattedMessages) {
+            if (!existingIds.has(fm.id)) {
+              existingConv.messages.push(fm);
+              existingIds.add(fm.id);
+            }
+          }
+        }
         existingConv.lastMessage = cleanedInquiry || existingConv.lastMessage;
         existingConv.lastUpdatedAt = nowIso;
         existingConv.lastEventType = eventType;
-        existingConv.unreadForAdmin = (existingConv.unreadForAdmin || 0) + 1;
         if (sessionInfo) existingConv.sessionInfo = { ...existingConv.sessionInfo, ...sessionInfo };
       } else {
         existingConv = {
@@ -1299,20 +1307,6 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
       }
 
       saveChatConversationsToDisk(inMemoryChatConversations);
-
-      const totalUnread = inMemoryChatConversations.reduce((acc, c) => acc + (c.unreadForAdmin || 0), 0);
-      broadcastLiveSiteUpdate({
-        type: 'chatbot_conversation_update',
-        conversation: existingConv,
-        newMessage: {
-          id: `msg-${Date.now()}`,
-          role: 'user',
-          content: cleanedInquiry,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          type: eventType,
-        },
-        totalUnread,
-      });
     } catch (saveErr) {
       console.warn('Could not record chat conversation in persistent store:', saveErr);
     }
@@ -1366,6 +1360,29 @@ app.get('/api/chatbot/conversations', (req, res) => {
   });
 });
 
+// Fetch a single Conversation by conversationId or visitorId (for visitor chat persistence & refresh)
+app.get('/api/chatbot/conversation', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  const convId = (req.query.conversationId as string) || '';
+  const visitorId = (req.query.visitorId as string) || '';
+
+  if (!convId && !visitorId) {
+    return res.status(400).json({ success: false, error: 'conversationId or visitorId is required' });
+  }
+
+  const conv = inMemoryChatConversations.find(
+    (c) => (convId && c.id === convId) || (visitorId && c.visitorId === visitorId)
+  );
+
+  res.json({
+    success: true,
+    conversation: conv || null,
+  });
+});
+
 // Post a new visitor message, quick reply, or inquiry to a conversation
 app.post('/api/chatbot/message', (req, res) => {
   try {
@@ -1394,10 +1411,20 @@ app.post('/api/chatbot/message', (req, res) => {
     const nowIso = new Date().toISOString();
     const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    // Auto-detect email or phone if visitor provided it in message text
+    const emailMatch = messageText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
+    const phoneMatch = messageText.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+    const detectedEmail = visitorEmail || (emailMatch ? emailMatch[0] : '');
+    const detectedPhone = visitorPhone || (phoneMatch ? phoneMatch[0] : '');
+
+    const resolvedVisitorName =
+      visitorName ||
+      (visitorId ? `Visitor #${visitorId.slice(-4).toUpperCase()}` : 'Website Visitor');
+
     const messageItem = {
       id: (rawMsg && typeof rawMsg === 'object' && rawMsg.id) || req.body.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       role: role as any,
-      senderName: role === 'user' ? (visitorName || 'Website Visitor') : 'Punchy AI',
+      senderName: role === 'user' ? resolvedVisitorName : 'Punchy AI',
       content: messageText,
       timestamp: formattedTime,
       createdAt: nowIso,
@@ -1412,9 +1439,9 @@ app.post('/api/chatbot/message', (req, res) => {
       conv = {
         id: convId,
         visitorId: visitorId || `visitor-${Date.now().toString(36)}`,
-        visitorName: visitorName || 'Website Visitor',
-        visitorEmail: visitorEmail || '',
-        visitorPhone: visitorPhone || '',
+        visitorName: resolvedVisitorName,
+        visitorEmail: detectedEmail,
+        visitorPhone: detectedPhone,
         startedAt: nowIso,
         lastUpdatedAt: nowIso,
         status: 'active',
@@ -1431,9 +1458,11 @@ app.post('/api/chatbot/message', (req, res) => {
       conv.lastMessage = messageText;
       conv.lastUpdatedAt = nowIso;
       conv.lastEventType = type;
-      if (visitorName) conv.visitorName = visitorName;
-      if (visitorEmail) conv.visitorEmail = visitorEmail;
-      if (visitorPhone) conv.visitorPhone = visitorPhone;
+      if (resolvedVisitorName && (!conv.visitorName || conv.visitorName === 'Website Visitor')) {
+        conv.visitorName = resolvedVisitorName;
+      }
+      if (detectedEmail && !conv.visitorEmail) conv.visitorEmail = detectedEmail;
+      if (detectedPhone && !conv.visitorPhone) conv.visitorPhone = detectedPhone;
       if (sessionInfo) conv.sessionInfo = { ...conv.sessionInfo, ...sessionInfo };
 
       if (role === 'user') {
