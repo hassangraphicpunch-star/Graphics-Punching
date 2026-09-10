@@ -110,20 +110,20 @@
   "portfolioItems": [],
   "leads": [
     {
-      "id": "lead-chat-1789067744772",
-      "name": "Alex Hunter",
-      "email": "alex@example.com",
+      "id": "lead-chat-1789069123492",
+      "name": "Alex Rivera",
+      "email": "alex@customapparel.com",
       "phone": "",
       "company": "",
       "serviceInterested": "Website AI Chatbot Inquiry",
-      "projectDetails": "Hi, I need an embroidery digitizing quote for 50 caps.",
-      "date": "2026-09-10T19:15:44.753Z",
+      "projectDetails": "Hello! Can you digitize a left chest cap logo in 4 hours? My email is alex@customapparel.com",
+      "date": "2026-09-10T19:38:43.475Z",
       "status": "new",
       "source": "Website AI Chatbot"
     }
   ],
   "emailLogs": [],
-  "publishedAt": "2026-09-10T19:11:37.143Z",
-  "version": 11,
-  "publishNote": "Test publish"
+  "publishedAt": "2026-09-10T19:38:36.685Z",
+  "version": 22,
+  "publishNote": "site publish test"
 }

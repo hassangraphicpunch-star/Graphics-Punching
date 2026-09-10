@@ -551,90 +551,101 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Synchronize from Server
   const syncFromServer = useCallback(async (): Promise<{ success: boolean; message: string; publishedAt?: string }> => {
-    try {
-      const res = await fetch(`/api/site/data?_t=${Date.now()}`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
-        },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          const published = json.data;
-          isSyncingFromServer.current = true;
+    const endpoints = ['/api/site/data', '/api/site/publish', '/api/publish', '/api/admin/publish'];
+    let lastErr = '';
 
-          let loadedSettings = settings;
-          if (published.settings) {
-            const sanitized = sanitizeSettings(published.settings);
-            setSettings(sanitized);
-            loadedSettings = sanitized;
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(`${ep}?_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            Pragma: 'no-cache',
+          },
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          const published = json.data || json;
+          if (published && (published.settings || published.portfolioItems || json.success)) {
+            isSyncingFromServer.current = true;
+
+            let loadedSettings: any = null;
+            if (published.settings) {
+              const sanitized = sanitizeSettings(published.settings);
+              setSettings(sanitized);
+              loadedSettings = sanitized;
+              try {
+                localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+              } catch {}
+            }
+
+            let loadedPortfolio: any = null;
+            if (Array.isArray(published.portfolioItems) && published.portfolioItems.length > 0) {
+              setPortfolioItems(published.portfolioItems);
+              loadedPortfolio = published.portfolioItems;
+              try {
+                localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(published.portfolioItems));
+              } catch {}
+            }
+
+            if (Array.isArray(published.leads)) {
+              setLeads(published.leads);
+              try {
+                localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(published.leads));
+              } catch {}
+            }
+
+            if (Array.isArray(published.emailLogs)) {
+              setEmailLogs(published.emailLogs);
+              try {
+                localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(published.emailLogs));
+              } catch {}
+            }
+
+            const publishTimestamp = json.publishedAt || published.publishedAt || new Date().toISOString();
+            setLastPublishedAt(publishTimestamp);
             try {
-              localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
             } catch {}
-          }
-          let loadedPortfolio = portfolioItems;
-          if (Array.isArray(published.portfolioItems) && published.portfolioItems.length > 0) {
-            setPortfolioItems(published.portfolioItems);
-            loadedPortfolio = published.portfolioItems;
-            try {
-              localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(published.portfolioItems));
-            } catch {}
-          }
-          if (Array.isArray(published.leads)) {
-            setLeads(published.leads);
-            try {
-              localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(published.leads));
-            } catch {}
-          }
-          if (Array.isArray(published.emailLogs)) {
-            setEmailLogs(published.emailLogs);
-            try {
-              localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(published.emailLogs));
-            } catch {}
-          }
 
-          const publishTimestamp = json.publishedAt || published.publishedAt || new Date().toISOString();
-          setLastPublishedAt(publishTimestamp);
-          try {
-            localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
-          } catch {}
+            if (loadedSettings) {
+              lastSyncedSnapshotRef.current = JSON.stringify({
+                settings: loadedSettings,
+                portfolioItems: loadedPortfolio || [],
+              });
+            }
 
-          lastSyncedSnapshotRef.current = JSON.stringify({
-            settings: loadedSettings,
-            portfolioItems: loadedPortfolio,
-          });
+            setHasUnpublishedChanges(false);
+            setSyncStatus('synced');
+            setPublishError(null);
 
-          setHasUnpublishedChanges(false);
-          setSyncStatus('synced');
-          setPublishError(null);
+            setTimeout(() => {
+              isSyncingFromServer.current = false;
+            }, 300);
 
-          return {
-            success: true,
-            message: 'Authoritative configuration pulled from server disk successfully.',
-            publishedAt: publishTimestamp,
-          };
+            return {
+              success: true,
+              message: 'Authoritative configuration pulled from server disk successfully.',
+              publishedAt: publishTimestamp,
+            };
+          }
+        } else {
+          lastErr = `HTTP ${res.status}`;
         }
+      } catch (err: any) {
+        lastErr = err?.message || 'Network error';
       }
-      const errorMsg = `Server returned HTTP ${res.status}`;
-      setPublishError(errorMsg);
-      setSyncStatus('error');
-      return { success: false, message: errorMsg };
-    } catch (err: any) {
-      const errorMsg = err?.message || 'Network error while pulling live data';
-      console.warn('Could not sync with server:', err);
-      setPublishError(errorMsg);
-      setSyncStatus('error');
-      return { success: false, message: errorMsg };
-    } finally {
-      setTimeout(() => {
-        isSyncingFromServer.current = false;
-      }, 300);
     }
-  }, [settings, portfolioItems]);
 
-  // 1. Initial Load: Fetch published website data from server
+    const errorMsg = `Server returned ${lastErr || 'unknown error'}`;
+    console.warn('Could not sync with server:', errorMsg);
+    setPublishError(errorMsg);
+    setSyncStatus('error');
+    return { success: false, message: errorMsg };
+  }, []);
+
+  // 1. Initial Load: Fetch published website data from server exactly once on mount
   useEffect(() => {
     syncFromServer().finally(() => {
       isInitialServerFetchDone.current = true;
@@ -650,7 +661,8 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       eventSource = new EventSource('/api/site/events');
 
       eventSource.onopen = () => {
-        setSyncStatus((prev) => (prev === 'offline' ? 'synced' : prev));
+        setSyncStatus((prev) => (prev === 'offline' || prev === 'error' ? 'synced' : prev));
+        setPublishError(null);
       };
 
       eventSource.onmessage = (event) => {
@@ -659,7 +671,8 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
           if (packet.type === 'published_update' && packet.data) {
             const updated = packet.data;
             isSyncingFromServer.current = true;
-            let updatedSettings = settings;
+
+            let updatedSettings: any = null;
             if (updated.settings) {
               const sanitized = sanitizeSettings(updated.settings);
               setSettings(sanitized);
@@ -668,7 +681,8 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
                 localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
               } catch {}
             }
-            let updatedPortfolio = portfolioItems;
+
+            let updatedPortfolio: any = null;
             if (Array.isArray(updated.portfolioItems)) {
               setPortfolioItems(updated.portfolioItems);
               updatedPortfolio = updated.portfolioItems;
@@ -676,19 +690,22 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
                 localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(updated.portfolioItems));
               } catch {}
             }
+
             if (Array.isArray(updated.leads)) setLeads(updated.leads);
             if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
-            
+
             const publishTimestamp = packet.publishedAt || updated.publishedAt || new Date().toISOString();
             setLastPublishedAt(publishTimestamp);
             try {
               localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
             } catch {}
 
-            lastSyncedSnapshotRef.current = JSON.stringify({
-              settings: updatedSettings,
-              portfolioItems: updatedPortfolio,
-            });
+            if (updatedSettings) {
+              lastSyncedSnapshotRef.current = JSON.stringify({
+                settings: updatedSettings,
+                portfolioItems: updatedPortfolio || [],
+              });
+            }
 
             setHasUnpublishedChanges(false);
             setSyncStatus('synced');
@@ -708,7 +725,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       };
 
       eventSource.onerror = () => {
-        // Fallback to polling if SSE encounters transient interruption
+        // Fallback to periodic sync if SSE stream is temporarily interrupted
         if (!fallbackPollInterval) {
           fallbackPollInterval = setInterval(() => {
             syncFromServer();
@@ -726,7 +743,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       if (eventSource) eventSource.close();
       if (fallbackPollInterval) clearInterval(fallbackPollInterval);
     };
-  }, [syncFromServer, settings, portfolioItems]);
+  }, [syncFromServer]);
 
   // Publish to Live Website Action
   const publishToLive = async (options?: { quiet?: boolean; note?: string }): Promise<{ success: boolean; message: string; publishedAt?: string }> => {

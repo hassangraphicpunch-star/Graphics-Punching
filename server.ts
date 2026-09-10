@@ -11,6 +11,24 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Graceful JSON parse error handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    console.warn('JSON parsing syntax error on request to', req.path);
+    return res.status(400).json({ success: false, error: 'Malformed JSON payload' });
+  }
+  next();
+});
+
+// Trailing-slash normalization for all API routes
+app.use((req, res, next) => {
+  if (req.path.length > 1 && req.path.endsWith('/') && req.path.startsWith('/api')) {
+    const query = req.url.slice(req.path.length);
+    req.url = req.path.slice(0, -1) + query;
+  }
+  next();
+});
+
 // Global CORS headers allowing image asset loading and API requests
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -412,16 +430,28 @@ app.get('/api/site/version', (req, res) => {
 
 // Reusable Publish Handler supporting multiple route aliases and methods
 function handlePublishRequest(req: express.Request, res: express.Response) {
-  // If GET, return latest publication status rather than a 404
+  // If GET, return latest publication status rather than an error
   if (req.method === 'GET') {
+    if (!inMemoryPublishedData) {
+      loadPublishedDataFromDisk();
+    }
+    const safeData = inMemoryPublishedData || {
+      settings: BASELINE_SETTINGS,
+      portfolioItems: [],
+      leads: [],
+      emailLogs: [],
+      publishedAt: new Date().toISOString(),
+      version: 1,
+    };
     return res.json({
       success: true,
       status: 'ready',
       message: 'Publish pipeline online and active.',
       hasPublishedData: inMemoryPublishedData !== null,
-      publishedAt: inMemoryPublishedData?.publishedAt || null,
-      version: inMemoryPublishedData?.version || 0,
+      publishedAt: safeData.publishedAt || new Date().toISOString(),
+      version: safeData.version || 1,
       activeClients: sseClients.size,
+      data: safeData,
     });
   }
 
@@ -433,11 +463,9 @@ function handlePublishRequest(req: express.Request, res: express.Response) {
     const effectiveEmailLogs = payload.emailLogs || payload.data?.emailLogs;
     const note = payload.note || payload.data?.note || 'Admin published updates to live website';
 
-    if (!effectiveSettings && !effectivePortfolio) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid payload: settings or portfolio items required.',
-      });
+    // If data directory or cache was not loaded, load now
+    if (!inMemoryPublishedData) {
+      loadPublishedDataFromDisk();
     }
 
     const currentVersion = (inMemoryPublishedData?.version || 0) + 1;
@@ -507,15 +535,31 @@ const PUBLISH_ENDPOINTS = [
   '/api/settings/publish',
   '/api/admin/save',
   '/api/publish-live',
+  '/api/publish/live',
+  '/api/live/publish',
+  '/api/live-publish',
+  '/api/sync',
+  '/api/site/sync',
+  '/api/admin/sync',
+  '/api/sync-live',
+  '/api/live-sync',
+  '/api/settings/sync',
+  '/api/admin/save-settings',
+  '/api/save-settings',
+  '/api/settings/save',
+  '/api/cms/publish',
+  '/api/website/publish',
+  '/api/site/data',
+  '/api/site/settings',
+  '/api/settings',
+  '/api/admin/settings',
 ];
 
 PUBLISH_ENDPOINTS.forEach((endpoint) => {
   app.all(endpoint, handlePublishRequest);
+  // Also register with trailing slash
+  app.all(`${endpoint}/`, handlePublishRequest);
 });
-
-// Also accept POST/PUT directly on /api/site/data as an intuitive CMS endpoint
-app.post('/api/site/data', handlePublishRequest);
-app.put('/api/site/data', handlePublishRequest);
 
 // 5. Submit Customer Quote Request / Contact Lead
 const handleLeadSubmit = (req: express.Request, res: express.Response) => {
@@ -1354,10 +1398,15 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
 // ======================================================================
 
 // Fetch All Chat Conversations with unread metrics
-app.get('/api/chatbot/conversations', (req, res) => {
+app.get(['/api/chatbot/conversations', '/api/chat/conversations'], (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+
+  // Synchronize from disk if empty
+  if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
+    loadChatConversationsFromDisk();
+  }
 
   // Always return sorted with most recently updated conversations on top
   inMemoryChatConversations.sort((a, b) => new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime());
@@ -1376,7 +1425,7 @@ app.get('/api/chatbot/conversations', (req, res) => {
 });
 
 // Fetch a single Conversation by conversationId or visitorId (for visitor chat persistence & refresh)
-app.get(['/api/chatbot/conversation', '/api/chatbot/conversation/:id'], (req, res) => {
+app.get(['/api/chatbot/conversation', '/api/chatbot/conversation/:id', '/api/chat/conversation', '/api/chat/conversation/:id'], (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
@@ -1386,6 +1435,10 @@ app.get(['/api/chatbot/conversation', '/api/chatbot/conversation/:id'], (req, re
 
   if (!convId && !visitorId) {
     return res.status(400).json({ success: false, error: 'conversationId or visitorId is required' });
+  }
+
+  if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
+    loadChatConversationsFromDisk();
   }
 
   const conv = inMemoryChatConversations.find(
@@ -1399,7 +1452,7 @@ app.get(['/api/chatbot/conversation', '/api/chatbot/conversation/:id'], (req, re
 });
 
 // Post a new visitor message, quick reply, or inquiry to a conversation
-app.post('/api/chatbot/message', (req, res) => {
+app.post(['/api/chatbot/message', '/api/chat/message'], (req, res) => {
   try {
     const {
       conversationId,
@@ -1550,13 +1603,17 @@ app.post('/api/chatbot/message', (req, res) => {
 });
 
 // Administrator replies live to a visitor
-app.post(['/api/chatbot/reply', '/api/chatbot/admin-reply'], (req, res) => {
+app.post(['/api/chatbot/reply', '/api/chatbot/admin-reply', '/api/chat/reply', '/api/chat/admin-reply'], (req, res) => {
   try {
     const { conversationId, adminName = 'Graphics Punching Support Desk' } = req.body;
     const rawReply = req.body.replyText || req.body.reply || req.body.adminReply || req.body.message;
 
     if (!conversationId || !rawReply || !rawReply.trim()) {
       return res.status(400).json({ success: false, error: 'conversationId and reply text are required.' });
+    }
+
+    if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
+      loadChatConversationsFromDisk();
     }
 
     const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
@@ -1613,11 +1670,15 @@ app.post(['/api/chatbot/reply', '/api/chatbot/admin-reply'], (req, res) => {
 });
 
 // Mark conversation as read by administrator
-app.post('/api/chatbot/mark-read', (req, res) => {
+app.post(['/api/chatbot/mark-read', '/api/chat/mark-read', '/api/chat/read'], (req, res) => {
   try {
     const { conversationId } = req.body;
     if (!conversationId) {
       return res.status(400).json({ success: false, error: 'conversationId is required.' });
+    }
+
+    if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
+      loadChatConversationsFromDisk();
     }
 
     const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
@@ -1641,7 +1702,7 @@ app.post('/api/chatbot/mark-read', (req, res) => {
 });
 
 // Clear or Archive a conversation
-app.post('/api/chatbot/clear-or-archive', (req, res) => {
+app.post(['/api/chatbot/clear-or-archive', '/api/chat/clear-or-archive', '/api/chat/archive'], (req, res) => {
   try {
     const { conversationId, action = 'archive' } = req.body;
     if (!conversationId) {

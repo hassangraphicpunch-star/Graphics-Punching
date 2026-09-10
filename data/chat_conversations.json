@@ -1,5 +1,127 @@
 [
   {
+    "id": "conv-visitor-alex-001",
+    "visitorId": "alex-001",
+    "visitorName": "Alex Rivera",
+    "visitorEmail": "alex@customapparel.com",
+    "visitorPhone": "",
+    "startedAt": "2026-09-10T19:38:43.475Z",
+    "lastUpdatedAt": "2026-09-10T19:38:52.322Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hi Alex! Yes, our rush team can calibrate and digitize your left chest cap logo in 4 hours with Tajima DST + PDF worksheet.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789069123492-x1ij",
+        "role": "user",
+        "senderName": "Alex Rivera",
+        "content": "Hello! Can you digitize a left chest cap logo in 4 hours? My email is alex@customapparel.com",
+        "timestamp": "07:38 PM",
+        "createdAt": "2026-09-10T19:38:43.475Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-admin-1789069132322",
+        "role": "admin",
+        "senderName": "Graphics Punching Support Desk",
+        "content": "Hi Alex! Yes, our rush team can calibrate and digitize your left chest cap logo in 4 hours with Tajima DST + PDF worksheet.",
+        "timestamp": "07:38 PM",
+        "createdAt": "2026-09-10T19:38:52.322Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
+    "id": "conv-visitor-sarah-002",
+    "visitorId": "sarah-002",
+    "visitorName": "Sarah Chen",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-10T19:38:47.252Z",
+    "lastUpdatedAt": "2026-09-10T19:38:47.252Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Do you provide simulated process color separations for 6-color screen print?",
+    "lastEventType": "user_message",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789069127253-il2g",
+        "role": "user",
+        "senderName": "Sarah Chen",
+        "content": "Do you provide simulated process color separations for 6-color screen print?",
+        "timestamp": "07:38 PM",
+        "createdAt": "2026-09-10T19:38:47.252Z",
+        "type": "user_message"
+      }
+    ]
+  },
+  {
+    "id": "visitor-test-session-202",
+    "visitorId": "vis-202",
+    "visitorName": "Test Visitor Beta",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-10T19:33:10.728Z",
+    "lastUpdatedAt": "2026-09-10T19:33:16.857Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hi Beta! We can redraw your raster image into vector AI/EPS for $15 within 3 hours.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789068790729-3lmk",
+        "role": "user",
+        "senderName": "Test Visitor Beta",
+        "content": "Hello from Visitor Beta! Need raster to vector redraw.",
+        "timestamp": "07:33 PM",
+        "createdAt": "2026-09-10T19:33:10.728Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-admin-1789068796857",
+        "role": "admin",
+        "senderName": "Graphics Punching Lead Admin",
+        "content": "Hi Beta! We can redraw your raster image into vector AI/EPS for $15 within 3 hours.",
+        "timestamp": "07:33 PM",
+        "createdAt": "2026-09-10T19:33:16.857Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
+    "id": "visitor-test-session-101",
+    "visitorId": "vis-101",
+    "visitorName": "Test Visitor Alpha",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-10T19:33:07.821Z",
+    "lastUpdatedAt": "2026-09-10T19:33:07.821Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Hello from Visitor Alpha! Need 3D puff embroidery quote.",
+    "lastEventType": "user_message",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789068787837-nxmi",
+        "role": "user",
+        "senderName": "Test Visitor Alpha",
+        "content": "Hello from Visitor Alpha! Need 3D puff embroidery quote.",
+        "timestamp": "07:33 PM",
+        "createdAt": "2026-09-10T19:33:07.821Z",
+        "type": "user_message"
+      }
+    ]
+  },
+  {
     "id": "conv-1789067744772",
     "visitorId": "visitor-mtvwqqro",
     "visitorName": "Alex Hunter",
