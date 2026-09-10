@@ -156,14 +156,8 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
               const newMsg: ChatMessageItem = packet.newMessage;
 
               setConversations((prev) => {
-                const idx = prev.findIndex((c) => c.id === updatedConv.id);
-                if (idx >= 0) {
-                  const next = [...prev];
-                  next[idx] = updatedConv;
-                  return next;
-                } else {
-                  return [updatedConv, ...prev];
-                }
+                const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
+                return [updatedConv, ...withoutUpdated];
               });
 
               // If user message, play chime and trigger visual toast
@@ -173,18 +167,13 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
                   title: `New Message from ${updatedConv.visitorName}`,
                   text: newMsg.content.slice(0, 80),
                 });
-                setTimeout(() => setLastNotification(null), 6000);
+                setTimeout(() => setLastNotification(null), 8000);
               }
             } else if (packet.type === 'chatbot_admin_reply') {
               const updatedConv: ChatConversation = packet.conversation;
               setConversations((prev) => {
-                const idx = prev.findIndex((c) => c.id === updatedConv.id);
-                if (idx >= 0) {
-                  const next = [...prev];
-                  next[idx] = updatedConv;
-                  return next;
-                }
-                return [updatedConv, ...prev];
+                const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
+                return [updatedConv, ...withoutUpdated];
               });
             } else if (packet.type === 'chatbot_unread_update') {
               if (packet.conversationId) {

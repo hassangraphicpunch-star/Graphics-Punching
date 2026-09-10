@@ -1,5 +1,52 @@
 [
   {
+    "id": "visitor-device-ipad-pro-1",
+    "visitorId": "visitor-ipad-pro-1",
+    "visitorName": "Michael Scott (Scranton Branch)",
+    "visitorEmail": "michael.scott@dundermifflin.com",
+    "visitorPhone": "+1 (570) 555-0144",
+    "startedAt": "2026-09-10T18:34:53.488Z",
+    "lastUpdatedAt": "2026-09-10T18:35:23.614Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hello Michael! We can digitize your Dunder Mifflin logo for left-chest embroidery within 4 to 6 hours for $15 flat. Tajima .DST and Wilcom stitch files included.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {
+      "url": "https://www.graphicspunching.com/#/pricing",
+      "platform": "iPad iOS 17.5 (Safari Mobile)"
+    },
+    "messages": [
+      {
+        "id": "msg-1789065293501-b2j3",
+        "role": "user",
+        "senderName": "Michael Scott (Scranton Branch)",
+        "content": "Hello Graphics Punching! I need our Dunder Mifflin company logo digitized for embroidered polo shirts. What is the turnaround?",
+        "timestamp": "06:34 PM",
+        "createdAt": "2026-09-10T18:34:53.488Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-1789065301358-shcq",
+        "role": "user",
+        "senderName": "Visitor #RO-1",
+        "content": "What are your digitizing turnaround times & rates?",
+        "timestamp": "06:35 PM",
+        "createdAt": "2026-09-10T18:35:01.357Z",
+        "type": "quick_reply"
+      },
+      {
+        "id": "msg-admin-1789065323631",
+        "role": "admin",
+        "senderName": "Hassan (Senior Digitizer)",
+        "content": "Hello Michael! We can digitize your Dunder Mifflin logo for left-chest embroidery within 4 to 6 hours for $15 flat. Tajima .DST and Wilcom stitch files included.",
+        "timestamp": "06:35 PM",
+        "createdAt": "2026-09-10T18:35:23.614Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
     "id": "visitor-android-samsung-99",
     "visitorId": "visitor-android-99",
     "visitorName": "David Chen",

@@ -110,6 +110,18 @@
   "portfolioItems": [],
   "leads": [
     {
+      "id": "lead-chat-1789065293501",
+      "name": "Michael Scott (Scranton Branch)",
+      "email": "michael.scott@dundermifflin.com",
+      "phone": "+1 (570) 555-0144",
+      "company": "",
+      "serviceInterested": "Website AI Chatbot Inquiry",
+      "projectDetails": "Hello Graphics Punching! I need our Dunder Mifflin company logo digitized for embroidered polo shirts. What is the turnaround?",
+      "date": "2026-09-10T18:34:53.488Z",
+      "status": "new",
+      "source": "Website AI Chatbot"
+    },
+    {
       "id": "lead-1788984508100-phmb",
       "name": "System Health Check",
       "email": "graphicspunching264@gmail.com",

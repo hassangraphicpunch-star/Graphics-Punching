@@ -339,14 +339,14 @@ export const AdminPortal: React.FC = () => {
             },
             {
               id: 'live-chat',
-              label: 'Live Visitor Chat Inbox',
+              label: 'Visitor AI Chat & Live Desk',
               icon: MessageSquare,
-              desc: 'Real-time visitor inquiries & instant 2-way desk',
-              badge: unreadChatCount > 0 ? unreadChatCount : undefined,
+              desc: 'Real-time visitor messages, quick replies & live 2-way desk',
+              badge: unreadChatCount > 0 ? `${unreadChatCount} NEW` : undefined,
             },
             {
               id: 'chatbot',
-              label: 'AI Email Copilot & Dispatch',
+              label: 'AI Email Copilot & Gmail',
               icon: Sparkles,
               desc: 'AI email drafting assistant & connected Gmail',
             },

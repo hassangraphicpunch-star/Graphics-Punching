@@ -57,9 +57,10 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
 
   const [conversationId] = useState<string>(() => {
     try {
-      let cid = sessionStorage.getItem('gp_chat_conv_id');
+      let cid = localStorage.getItem('gp_chat_conv_id') || sessionStorage.getItem('gp_chat_conv_id');
       if (!cid) {
         cid = `conv-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+        localStorage.setItem('gp_chat_conv_id', cid);
         sessionStorage.setItem('gp_chat_conv_id', cid);
       }
       return cid;
@@ -398,28 +399,32 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     setInputMessage('');
     setIsLoading(true);
 
-    // 1. Immediately persist visitor message to server real-time chat store
-    try {
-      await fetch('/api/chatbot/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId,
-          visitorId,
-          visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
-          message: text,
-          role: 'user',
-          type: sourceType,
-          sessionInfo: {
+    // 1. Immediately persist visitor message to server real-time chat store with retry
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const postRes = await fetch('/api/chatbot/message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             conversationId,
             visitorId,
-            url: window.location.href,
-            platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
-          },
-        }),
-      });
-    } catch (postErr) {
-      console.warn('Could not post chat message:', postErr);
+            visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
+            message: text,
+            role: 'user',
+            type: sourceType,
+            sessionInfo: {
+              conversationId,
+              visitorId,
+              url: window.location.href,
+              platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
+            },
+          }),
+        });
+        if (postRes.ok) break;
+      } catch (postErr) {
+        if (attempt === 2) console.warn('Could not post chat message after 3 attempts:', postErr);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
     }
 
     // 2. Automatically send notification email to administrator
@@ -602,9 +607,31 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
   };
 
   const handleActionClick = (action: { type: string; label: string; url?: string }) => {
+    const actionText = `⚡ Selected Action: ${action.label} (${action.type})`;
+
+    // Persist to server as a user interaction message
+    fetch('/api/chatbot/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversationId,
+        visitorId,
+        visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
+        message: actionText,
+        role: 'user',
+        type: 'quick_action',
+        sessionInfo: {
+          conversationId,
+          visitorId,
+          url: window.location.href,
+          platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
+        },
+      }),
+    }).catch(() => {});
+
     // Notify administrator immediately of clicked quick action button
     notifyAdminOfInteraction({
-      selectedInquiry: `Action Clicked: ${action.label} (${action.type})`,
+      selectedInquiry: actionText,
       eventType: 'quick_action',
       actionDetails: action,
       conversationSnapshot: messages,

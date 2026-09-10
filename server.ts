@@ -1347,6 +1347,9 @@ app.get('/api/chatbot/conversations', (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
+  // Always return sorted with most recently updated conversations on top
+  inMemoryChatConversations.sort((a, b) => new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime());
+
   const totalUnread = inMemoryChatConversations.reduce(
     (acc, c) => acc + (c.unreadForAdmin || 0),
     0
@@ -1411,20 +1414,27 @@ app.post('/api/chatbot/message', (req, res) => {
     const nowIso = new Date().toISOString();
     const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Auto-detect email or phone if visitor provided it in message text
+    // Normalize role so visitor messages are always treated as user role
+    const normalizedRole = role === 'admin' ? 'admin' : (role === 'assistant' || role === 'bot') ? 'assistant' : 'user';
+
+    // Auto-detect email, phone, and name if visitor provided it in message text
     const emailMatch = messageText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
     const phoneMatch = messageText.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+    const nameMatch = messageText.match(/(?:my name is|i am|this is|i'm)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
+
     const detectedEmail = visitorEmail || (emailMatch ? emailMatch[0] : '');
     const detectedPhone = visitorPhone || (phoneMatch ? phoneMatch[0] : '');
+    const detectedName = nameMatch ? nameMatch[1].trim() : '';
 
     const resolvedVisitorName =
       visitorName ||
+      detectedName ||
       (visitorId ? `Visitor #${visitorId.slice(-4).toUpperCase()}` : 'Website Visitor');
 
     const messageItem = {
       id: (rawMsg && typeof rawMsg === 'object' && rawMsg.id) || req.body.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      role: role as any,
-      senderName: role === 'user' ? resolvedVisitorName : 'Punchy AI',
+      role: normalizedRole as any,
+      senderName: normalizedRole === 'user' ? resolvedVisitorName : normalizedRole === 'admin' ? 'Support Desk' : 'Punchy AI',
       content: messageText,
       timestamp: formattedTime,
       createdAt: nowIso,
@@ -1445,7 +1455,7 @@ app.post('/api/chatbot/message', (req, res) => {
         startedAt: nowIso,
         lastUpdatedAt: nowIso,
         status: 'active',
-        unreadForAdmin: role === 'user' ? 1 : 0,
+        unreadForAdmin: normalizedRole === 'user' ? 1 : 0,
         unreadForVisitor: 0,
         lastMessage: messageText,
         lastEventType: type,
@@ -1465,9 +1475,41 @@ app.post('/api/chatbot/message', (req, res) => {
       if (detectedPhone && !conv.visitorPhone) conv.visitorPhone = detectedPhone;
       if (sessionInfo) conv.sessionInfo = { ...conv.sessionInfo, ...sessionInfo };
 
-      if (role === 'user') {
+      if (normalizedRole === 'user') {
         conv.unreadForAdmin = (conv.unreadForAdmin || 0) + 1;
         conv.status = 'active';
+      }
+
+      // Reposition this updated conversation to the top
+      const existingIdx = inMemoryChatConversations.findIndex((c) => c.id === conv.id);
+      if (existingIdx > 0) {
+        inMemoryChatConversations.splice(existingIdx, 1);
+        inMemoryChatConversations.unshift(conv);
+      }
+    }
+
+    // Auto-record lead in CRM if email was detected from chatbot message
+    if (detectedEmail && inMemoryPublishedData) {
+      if (!inMemoryPublishedData.leads) inMemoryPublishedData.leads = [];
+      const exists = inMemoryPublishedData.leads.some(
+        (l: any) => l.email && l.email.toLowerCase() === detectedEmail.toLowerCase()
+      );
+      if (!exists) {
+        const autoLead = {
+          id: `lead-chat-${Date.now()}`,
+          name: conv.visitorName || 'Website Chatbot Visitor',
+          email: detectedEmail,
+          phone: detectedPhone || '',
+          company: '',
+          serviceInterested: 'Website AI Chatbot Inquiry',
+          projectDetails: messageText,
+          date: nowIso,
+          status: 'new',
+          source: 'Website AI Chatbot',
+        };
+        inMemoryPublishedData.leads.unshift(autoLead);
+        savePublishedDataToDisk(inMemoryPublishedData);
+        broadcastLiveSiteUpdate({ type: 'new_lead', lead: autoLead });
       }
     }
 
@@ -1498,10 +1540,11 @@ app.post('/api/chatbot/message', (req, res) => {
 // Administrator replies live to a visitor
 app.post('/api/chatbot/reply', (req, res) => {
   try {
-    const { conversationId, replyText, adminName = 'Graphics Punching Support Desk' } = req.body;
+    const { conversationId, adminName = 'Graphics Punching Support Desk' } = req.body;
+    const rawReply = req.body.replyText || req.body.reply || req.body.message;
 
-    if (!conversationId || !replyText || !replyText.trim()) {
-      return res.status(400).json({ success: false, error: 'conversationId and replyText are required.' });
+    if (!conversationId || !rawReply || !rawReply.trim()) {
+      return res.status(400).json({ success: false, error: 'conversationId and reply text are required.' });
     }
 
     const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
@@ -1516,18 +1559,25 @@ app.post('/api/chatbot/reply', (req, res) => {
       id: `msg-admin-${Date.now()}`,
       role: 'admin',
       senderName: adminName,
-      content: replyText.trim(),
+      content: rawReply.trim(),
       timestamp: formattedTime,
       createdAt: nowIso,
       type: 'admin_reply',
     };
 
     conv.messages.push(adminMessage);
-    conv.lastMessage = `[Admin] ${replyText.trim()}`;
+    conv.lastMessage = `[Admin] ${rawReply.trim()}`;
     conv.lastUpdatedAt = nowIso;
     conv.lastEventType = 'admin_reply';
     conv.unreadForAdmin = 0;
     conv.unreadForVisitor = (conv.unreadForVisitor || 0) + 1;
+
+    // Reposition this conversation to the top
+    const existingIdx = inMemoryChatConversations.findIndex((c) => c.id === conv.id);
+    if (existingIdx > 0) {
+      inMemoryChatConversations.splice(existingIdx, 1);
+      inMemoryChatConversations.unshift(conv);
+    }
 
     saveChatConversationsToDisk(inMemoryChatConversations);
 
