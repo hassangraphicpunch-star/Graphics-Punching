@@ -1,5 +1,40 @@
 [
   {
+    "id": "conv-1789067744772",
+    "visitorId": "visitor-mtvwqqro",
+    "visitorName": "Alex Hunter",
+    "visitorEmail": "alex@example.com",
+    "visitorPhone": "",
+    "startedAt": "2026-09-10T19:15:44.753Z",
+    "lastUpdatedAt": "2026-09-10T19:16:13.758Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hello Alex! We can digitize that in 2 hours. Cap designs are calibrated for 3D puff or flat stitching.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789067744772-9n5m",
+        "role": "user",
+        "senderName": "Alex Hunter",
+        "content": "Hi, I need an embroidery digitizing quote for 50 caps.",
+        "timestamp": "07:15 PM",
+        "createdAt": "2026-09-10T19:15:44.753Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-admin-1789067773776",
+        "role": "admin",
+        "senderName": "Studio Manager",
+        "content": "Hello Alex! We can digitize that in 2 hours. Cap designs are calibrated for 3D puff or flat stitching.",
+        "timestamp": "07:16 PM",
+        "createdAt": "2026-09-10T19:16:13.758Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
     "id": "visitor-device-ipad-pro-1",
     "visitorId": "visitor-ipad-pro-1",
     "visitorName": "Michael Scott (Scranton Branch)",

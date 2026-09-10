@@ -38,11 +38,19 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
   const [replyText, setReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gp_chime_sound_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [sseStatus, setSseStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [lastNotification, setLastNotification] = useState<{ title: string; text: string } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const playedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Play audio chime for incoming messages using Web Audio API
   const playChime = () => {
@@ -90,6 +98,15 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.conversations)) {
+          // Index existing message IDs to ensure old messages are never chimed
+          data.conversations.forEach((c: ChatConversation) => {
+            if (Array.isArray(c.messages)) {
+              c.messages.forEach((m) => {
+                if (m.id) playedMessageIdsRef.current.add(m.id);
+              });
+            }
+          });
+
           setConversations((prev) => {
             // Check if there are real changes to avoid unnecessary re-renders
             if (
@@ -144,14 +161,21 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
     const connect = () => {
       if (!isMounted) return;
+      setSseStatus('connecting');
       try {
         eventSource = new EventSource('/api/site/events');
+
+        eventSource.onopen = () => {
+          if (isMounted) setSseStatus('connected');
+        };
 
         eventSource.onmessage = (event) => {
           try {
             const packet = JSON.parse(event.data);
 
-            if (packet.type === 'chatbot_conversation_update') {
+            if (packet.type === 'connected') {
+              if (isMounted) setSseStatus('connected');
+            } else if (packet.type === 'chatbot_conversation_update') {
               const updatedConv: ChatConversation = packet.conversation;
               const newMsg: ChatMessageItem = packet.newMessage;
 
@@ -160,17 +184,23 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
                 return [updatedConv, ...withoutUpdated];
               });
 
-              // If user message, play chime and trigger visual toast
-              if (newMsg?.role === 'user') {
-                playChime();
-                setLastNotification({
-                  title: `New Message from ${updatedConv.visitorName}`,
-                  text: newMsg.content.slice(0, 80),
-                });
-                setTimeout(() => setLastNotification(null), 8000);
+              // Play chime and toast only for brand new visitor messages not yet chimed
+              if (newMsg?.id && !playedMessageIdsRef.current.has(newMsg.id)) {
+                playedMessageIdsRef.current.add(newMsg.id);
+                if (newMsg.role === 'user') {
+                  playChime();
+                  setLastNotification({
+                    title: `New Message from ${updatedConv.visitorName}`,
+                    text: newMsg.content.slice(0, 80),
+                  });
+                  setTimeout(() => setLastNotification(null), 8000);
+                }
               }
             } else if (packet.type === 'chatbot_admin_reply') {
               const updatedConv: ChatConversation = packet.conversation;
+              if (packet.adminMessage?.id) {
+                playedMessageIdsRef.current.add(packet.adminMessage.id);
+              }
               setConversations((prev) => {
                 const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
                 return [updatedConv, ...withoutUpdated];
@@ -192,6 +222,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
         };
 
         eventSource.onerror = () => {
+          if (isMounted) setSseStatus('error');
           if (eventSource) {
             eventSource.close();
             eventSource = null;
@@ -202,6 +233,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
           }
         };
       } catch (e) {
+        if (isMounted) setSseStatus('error');
         console.warn('SSE connection error in Chat Inbox:', e);
       }
     };
@@ -450,8 +482,22 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
             </div>
           </div>
           <p className="text-sm font-black text-white mt-2 flex items-center gap-1.5 font-display">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>SSE Stream Active</span>
+            {sseStatus === 'connected' ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-emerald-400">SSE Stream Active</span>
+              </>
+            ) : sseStatus === 'connecting' ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-amber-400">Connecting Stream...</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-400" />
+                <span className="text-red-400">SSE Stream Error</span>
+              </>
+            )}
           </p>
           <p className="text-[11px] text-zinc-500 mt-0.5">Live push to Admin Portal</p>
         </div>
@@ -482,7 +528,13 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={() => {
+                const next = !soundEnabled;
+                setSoundEnabled(next);
+                try {
+                  localStorage.setItem('gp_chime_sound_enabled', String(next));
+                } catch {}
+              }}
               title={soundEnabled ? 'Chime sound enabled' : 'Chime sound muted'}
               className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                 soundEnabled

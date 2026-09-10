@@ -55,6 +55,7 @@ export const WebsiteSettingsManager: React.FC = () => {
     autoPublishLive,
     toggleAutoPublishLive,
     syncStatus,
+    publishError,
     publishToLive,
     syncFromServer,
     changeAdminPassword,
@@ -2080,7 +2081,14 @@ export const WebsiteSettingsManager: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => syncFromServer()}
+                    onClick={async () => {
+                      const res = await syncFromServer();
+                      if (res?.success) {
+                        triggerSaveNotification('✅ Authoritative configuration pulled from live server successfully!');
+                      } else {
+                        triggerSaveNotification(`Pull error: ${res?.message || 'Failed to pull'}`);
+                      }
+                    }}
                     className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
@@ -2103,6 +2111,8 @@ export const WebsiteSettingsManager: React.FC = () => {
                           ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]'
                           : syncStatus === 'publishing'
                           ? 'bg-blue-400 animate-spin'
+                          : syncStatus === 'error'
+                          ? 'bg-red-400 shadow-[0_0_10px_rgba(248,113,113,0.9)]'
                           : 'bg-amber-400 animate-pulse'
                       }`}
                     />
@@ -2114,7 +2124,9 @@ export const WebsiteSettingsManager: React.FC = () => {
                     {syncStatus === 'error' && <span className="text-red-400">Sync Error</span>}
                   </div>
                   <p className="text-[11px] text-zinc-400">
-                    {hasUnpublishedChanges
+                    {syncStatus === 'error' && publishError
+                      ? `Publish failed: ${publishError}`
+                      : hasUnpublishedChanges
                       ? 'You have edits waiting to be broadcast live to website visitors.'
                       : 'Server state and browser state are in 100% sync.'}
                   </p>
@@ -2126,19 +2138,37 @@ export const WebsiteSettingsManager: React.FC = () => {
                     <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
                       Auto-Publish Live
                     </span>
-                    <Zap className={`w-4 h-4 ${autoPublishLive ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                    <button
+                      type="button"
+                      onClick={toggleAutoPublishLive}
+                      className="cursor-pointer"
+                      title={autoPublishLive ? 'Switch to manual publishing' : 'Enable instant auto-publishing'}
+                    >
+                      <Zap className={`w-4 h-4 ${autoPublishLive ? 'text-emerald-400' : 'text-zinc-600'}`} />
+                    </button>
                   </div>
-                  <div className="text-base font-bold text-white">
+                  <div className="text-base font-bold text-white flex items-center justify-between">
                     {autoPublishLive ? (
                       <span className="text-emerald-400">Enabled (Instant)</span>
                     ) : (
                       <span className="text-zinc-400">Manual Publish</span>
                     )}
+                    <button
+                      type="button"
+                      onClick={toggleAutoPublishLive}
+                      className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                        autoPublishLive
+                          ? 'border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10'
+                          : 'border-zinc-700 text-zinc-400 hover:bg-zinc-800'
+                      }`}
+                    >
+                      {autoPublishLive ? 'Turn Off' : 'Turn On'}
+                    </button>
                   </div>
                   <p className="text-[11px] text-zinc-400">
                     {autoPublishLive
                       ? 'Edits are immediately written to disk and pushed to visitors via SSE.'
-                      : 'You must click "Publish to Live" to push changes.'}
+                      : 'You must click "Publish All Changes to Live Website" to push changes.'}
                   </p>
                 </div>
 

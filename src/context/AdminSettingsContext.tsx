@@ -296,9 +296,10 @@ interface AdminSettingsContextType {
   lastPublishedAt: string | null;
   autoPublishLive: boolean;
   syncStatus: 'synced' | 'unsaved' | 'publishing' | 'offline' | 'error';
+  publishError: string | null;
   publishToLive: (options?: { quiet?: boolean; note?: string }) => Promise<{ success: boolean; message: string; publishedAt?: string }>;
   toggleAutoPublishLive: () => void;
-  syncFromServer: () => Promise<void>;
+  syncFromServer: () => Promise<{ success: boolean; message: string; publishedAt?: string }>;
 
   // Authentication
   loginAdmin: (passwordOrPin: string) => boolean;
@@ -532,20 +533,24 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   });
   const [autoPublishLive, setAutoPublishLive] = useState<boolean>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEYS.AUTO_PUBLISH) === 'true';
-    } catch {
+      const stored = localStorage.getItem(STORAGE_KEYS.AUTO_PUBLISH);
+      if (stored !== null) return stored === 'true';
       return true; // Default ON for seamless real-time syncing
+    } catch {
+      return true;
     }
   });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'unsaved' | 'publishing' | 'offline' | 'error'>('synced');
+  const [publishError, setPublishError] = useState<string | null>(null);
 
-  // Track initial server fetch completion and syncing guard
+  // Track initial server fetch completion, syncing guard, and last synced baseline snapshot
   const isInitialServerFetchDone = useRef<boolean>(false);
   const isSyncingFromServer = useRef<boolean>(false);
   const autoPublishTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSyncedSnapshotRef = useRef<string>('');
 
   // Synchronize from Server
-  const syncFromServer = useCallback(async () => {
+  const syncFromServer = useCallback(async (): Promise<{ success: boolean; message: string; publishedAt?: string }> => {
     try {
       const res = await fetch(`/api/site/data?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -559,15 +564,20 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
         if (json.success && json.data) {
           const published = json.data;
           isSyncingFromServer.current = true;
+
+          let loadedSettings = settings;
           if (published.settings) {
             const sanitized = sanitizeSettings(published.settings);
             setSettings(sanitized);
+            loadedSettings = sanitized;
             try {
               localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
             } catch {}
           }
+          let loadedPortfolio = portfolioItems;
           if (Array.isArray(published.portfolioItems) && published.portfolioItems.length > 0) {
             setPortfolioItems(published.portfolioItems);
+            loadedPortfolio = published.portfolioItems;
             try {
               localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(published.portfolioItems));
             } catch {}
@@ -584,24 +594,45 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
               localStorage.setItem(STORAGE_KEYS.EMAIL_LOGS, JSON.stringify(published.emailLogs));
             } catch {}
           }
-          if (json.publishedAt) {
-            setLastPublishedAt(json.publishedAt);
-            try {
-              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, json.publishedAt);
-            } catch {}
-          }
+
+          const publishTimestamp = json.publishedAt || published.publishedAt || new Date().toISOString();
+          setLastPublishedAt(publishTimestamp);
+          try {
+            localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
+          } catch {}
+
+          lastSyncedSnapshotRef.current = JSON.stringify({
+            settings: loadedSettings,
+            portfolioItems: loadedPortfolio,
+          });
+
           setHasUnpublishedChanges(false);
           setSyncStatus('synced');
+          setPublishError(null);
+
+          return {
+            success: true,
+            message: 'Authoritative configuration pulled from server disk successfully.',
+            publishedAt: publishTimestamp,
+          };
         }
       }
-    } catch (err) {
+      const errorMsg = `Server returned HTTP ${res.status}`;
+      setPublishError(errorMsg);
+      setSyncStatus('error');
+      return { success: false, message: errorMsg };
+    } catch (err: any) {
+      const errorMsg = err?.message || 'Network error while pulling live data';
       console.warn('Could not sync with server:', err);
+      setPublishError(errorMsg);
+      setSyncStatus('error');
+      return { success: false, message: errorMsg };
     } finally {
       setTimeout(() => {
         isSyncingFromServer.current = false;
       }, 300);
     }
-  }, []);
+  }, [settings, portfolioItems]);
 
   // 1. Initial Load: Fetch published website data from server
   useEffect(() => {
@@ -628,24 +659,41 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
           if (packet.type === 'published_update' && packet.data) {
             const updated = packet.data;
             isSyncingFromServer.current = true;
+            let updatedSettings = settings;
             if (updated.settings) {
               const sanitized = sanitizeSettings(updated.settings);
               setSettings(sanitized);
+              updatedSettings = sanitized;
               try {
                 localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
               } catch {}
             }
-            if (Array.isArray(updated.portfolioItems)) setPortfolioItems(updated.portfolioItems);
-            if (Array.isArray(updated.leads)) setLeads(updated.leads);
-            if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
-            if (packet.publishedAt) {
-              setLastPublishedAt(packet.publishedAt);
+            let updatedPortfolio = portfolioItems;
+            if (Array.isArray(updated.portfolioItems)) {
+              setPortfolioItems(updated.portfolioItems);
+              updatedPortfolio = updated.portfolioItems;
               try {
-                localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, packet.publishedAt);
+                localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(updated.portfolioItems));
               } catch {}
             }
+            if (Array.isArray(updated.leads)) setLeads(updated.leads);
+            if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
+            
+            const publishTimestamp = packet.publishedAt || updated.publishedAt || new Date().toISOString();
+            setLastPublishedAt(publishTimestamp);
+            try {
+              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
+            } catch {}
+
+            lastSyncedSnapshotRef.current = JSON.stringify({
+              settings: updatedSettings,
+              portfolioItems: updatedPortfolio,
+            });
+
             setHasUnpublishedChanges(false);
             setSyncStatus('synced');
+            setPublishError(null);
+
             setTimeout(() => {
               isSyncingFromServer.current = false;
             }, 300);
@@ -678,7 +726,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       if (eventSource) eventSource.close();
       if (fallbackPollInterval) clearInterval(fallbackPollInterval);
     };
-  }, [syncFromServer]);
+  }, [syncFromServer, settings, portfolioItems]);
 
   // Publish to Live Website Action
   const publishToLive = async (options?: { quiet?: boolean; note?: string }): Promise<{ success: boolean; message: string; publishedAt?: string }> => {
@@ -711,9 +759,8 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
         note: options?.note || 'Published via Admin Portal',
       };
 
-      // Try primary and fallback endpoints to ensure maximum reliability across environments
+      // Try primary endpoint first, then fallbacks
       const endpointsToTry = ['/api/admin/publish', '/api/site/publish', '/api/publish', '/api/site/data'];
-      let res: Response | null = null;
       let lastErrorMessage = '';
 
       for (const endpoint of endpointsToTry) {
@@ -728,14 +775,16 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
             },
             body: JSON.stringify(payload),
           });
+
           if (attempt.ok) {
             const data = await attempt.json();
             if (data.success) {
-              res = attempt;
               const publishTimestamp = data.publishedAt || new Date().toISOString();
               setLastPublishedAt(publishTimestamp);
+              lastSyncedSnapshotRef.current = JSON.stringify({ settings, portfolioItems });
               setHasUnpublishedChanges(false);
               setSyncStatus('synced');
+              setPublishError(null);
               try {
                 localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
               } catch {}
@@ -745,15 +794,25 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
                 message: 'Website published and synchronized live to all visitors in real-time.',
                 publishedAt: publishTimestamp,
               };
+            } else {
+              lastErrorMessage = data.error || 'Server rejected publish request';
             }
           } else {
-            lastErrorMessage = `Server returned HTTP ${attempt.status}`;
+            let errorText = '';
+            try {
+              const errJson = await attempt.json();
+              errorText = errJson.error || errJson.message;
+            } catch {
+              errorText = `HTTP ${attempt.status}`;
+            }
+            lastErrorMessage = errorText;
           }
         } catch (fetchErr: any) {
           lastErrorMessage = fetchErr?.message || 'Network error';
         }
       }
 
+      setPublishError(lastErrorMessage || 'Unable to reach live publish service');
       setSyncStatus('error');
       setIsPublishing(false);
       return {
@@ -762,11 +821,13 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       };
     } catch (error: any) {
       console.error('Publish to live encountered issue:', error);
+      const errorMsg = error?.message || 'Could not connect to live publishing service';
+      setPublishError(errorMsg);
       setSyncStatus('error');
       setIsPublishing(false);
       return {
         success: false,
-        message: 'Could not connect to live publishing service.',
+        message: `Publish failed: ${errorMsg}`,
       };
     }
   };
@@ -776,11 +837,14 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     setAutoPublishLive((prev) => {
       const next = !prev;
       localStorage.setItem(STORAGE_KEYS.AUTO_PUBLISH, next ? 'true' : 'false');
+      if (next && hasUnpublishedChanges && isAdminAuthenticated) {
+        publishToLive({ quiet: true, note: 'Auto-publish enabled sync' });
+      }
       return next;
     });
   };
 
-  // Persistence Effects to LocalStorage and Auto-Publish
+  // Synchronized Change Detection Effect
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
@@ -789,19 +853,30 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     if (isSyncingFromServer.current) return;
-    if (!isAdminAuthenticated) return;
     if (!isInitialServerFetchDone.current) return;
 
-    setHasUnpublishedChanges(true);
-    if (syncStatus !== 'publishing') setSyncStatus('unsaved');
+    const currentSnapshot = JSON.stringify({ settings, portfolioItems });
+    const isDifferent = Boolean(lastSyncedSnapshotRef.current && currentSnapshot !== lastSyncedSnapshotRef.current);
 
-    if (autoPublishLive) {
-      if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
-      autoPublishTimeoutRef.current = setTimeout(() => {
-        publishToLive({ quiet: true, note: 'Auto-published live update' });
-      }, 1200);
+    if (isDifferent) {
+      setHasUnpublishedChanges(true);
+      if (syncStatus !== 'publishing' && syncStatus !== 'error') {
+        setSyncStatus('unsaved');
+      }
+
+      if (autoPublishLive && isAdminAuthenticated) {
+        if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
+        autoPublishTimeoutRef.current = setTimeout(() => {
+          publishToLive({ quiet: true, note: 'Auto-published live update' });
+        }, 1200);
+      }
+    } else if (lastSyncedSnapshotRef.current) {
+      setHasUnpublishedChanges(false);
+      if (syncStatus === 'unsaved') {
+        setSyncStatus('synced');
+      }
     }
-  }, [settings, autoPublishLive, isAdminAuthenticated]);
+  }, [settings, portfolioItems, autoPublishLive, isAdminAuthenticated, syncStatus]);
 
   useEffect(() => {
     try {
@@ -809,21 +884,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     } catch (e) {
       console.warn('Failed to persist portfolio items:', e);
     }
-
-    if (isSyncingFromServer.current) return;
-    if (!isAdminAuthenticated) return;
-    if (!isInitialServerFetchDone.current) return;
-
-    setHasUnpublishedChanges(true);
-    if (syncStatus !== 'publishing') setSyncStatus('unsaved');
-
-    if (autoPublishLive) {
-      if (autoPublishTimeoutRef.current) clearTimeout(autoPublishTimeoutRef.current);
-      autoPublishTimeoutRef.current = setTimeout(() => {
-        publishToLive({ quiet: true, note: 'Auto-published live portfolio update' });
-      }, 1200);
-    }
-  }, [portfolioItems, autoPublishLive, isAdminAuthenticated]);
+  }, [portfolioItems]);
 
   useEffect(() => {
     try {
@@ -1133,6 +1194,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       lastPublishedAt,
       autoPublishLive,
       syncStatus,
+      publishError,
       publishToLive,
       toggleAutoPublishLive,
       syncFromServer,
@@ -1180,6 +1242,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       lastPublishedAt,
       autoPublishLive,
       syncStatus,
+      publishError,
       publishToLive,
       toggleAutoPublishLive,
       syncFromServer,

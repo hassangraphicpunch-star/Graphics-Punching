@@ -206,9 +206,7 @@ function saveChatConversationsToDisk(conversations: any[]): boolean {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    const tempFile = `${CHAT_CONVERSATIONS_FILE}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempFile, JSON.stringify(conversations, null, 2), 'utf-8');
-    fs.renameSync(tempFile, CHAT_CONVERSATIONS_FILE);
+    fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(conversations, null, 2), 'utf-8');
     inMemoryChatConversations = conversations;
     return true;
   } catch (err) {
@@ -222,9 +220,7 @@ function savePublishedDataToDisk(data: any): boolean {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    const tempFile = `${PUBLISHED_DATA_FILE}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tempFile, PUBLISHED_DATA_FILE);
+    fs.writeFileSync(PUBLISHED_DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
     inMemoryPublishedData = data;
     return true;
   } catch (err) {
@@ -313,11 +309,16 @@ app.get('/api/health', (req, res) => {
 // 2. Real-Time Live Server-Sent Events Stream (SSE)
 app.get('/api/site/events', (req, res) => {
   res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
     'Access-Control-Allow-Origin': '*',
   });
+
+  if (typeof (res as any).flushHeaders === 'function') {
+    (res as any).flushHeaders();
+  }
 
   // Send initial connection packet
   res.write(
@@ -330,7 +331,18 @@ app.get('/api/site/events', (req, res) => {
 
   sseClients.add(res);
 
+  // Send periodic keep-alive heartbeat to prevent reverse proxies / Cloud Run from dropping idle streams
+  const heartbeatInterval = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeatInterval);
+      sseClients.delete(res);
+    }
+  }, 15000);
+
   req.on('close', () => {
+    clearInterval(heartbeatInterval);
     sseClients.delete(res);
   });
 });
@@ -1364,12 +1376,12 @@ app.get('/api/chatbot/conversations', (req, res) => {
 });
 
 // Fetch a single Conversation by conversationId or visitorId (for visitor chat persistence & refresh)
-app.get('/api/chatbot/conversation', (req, res) => {
+app.get(['/api/chatbot/conversation', '/api/chatbot/conversation/:id'], (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
 
-  const convId = (req.query.conversationId as string) || '';
+  const convId = (req.query.conversationId as string) || req.params.id || '';
   const visitorId = (req.query.visitorId as string) || '';
 
   if (!convId && !visitorId) {
@@ -1538,10 +1550,10 @@ app.post('/api/chatbot/message', (req, res) => {
 });
 
 // Administrator replies live to a visitor
-app.post('/api/chatbot/reply', (req, res) => {
+app.post(['/api/chatbot/reply', '/api/chatbot/admin-reply'], (req, res) => {
   try {
     const { conversationId, adminName = 'Graphics Punching Support Desk' } = req.body;
-    const rawReply = req.body.replyText || req.body.reply || req.body.message;
+    const rawReply = req.body.replyText || req.body.reply || req.body.adminReply || req.body.message;
 
     if (!conversationId || !rawReply || !rawReply.trim()) {
       return res.status(400).json({ success: false, error: 'conversationId and reply text are required.' });
