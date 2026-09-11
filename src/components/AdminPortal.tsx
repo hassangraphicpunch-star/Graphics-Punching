@@ -41,6 +41,9 @@ export const AdminPortal: React.FC = () => {
     autoPublishLive,
     toggleAutoPublishLive,
     syncStatus,
+    sseStatus,
+    sseError,
+    subscribeToRealtimeEvents,
     publishToLive,
     syncFromServer,
   } = useWebsiteSettings();
@@ -55,14 +58,14 @@ export const AdminPortal: React.FC = () => {
     text: string;
   } | null>(null);
 
-  // Synchronize unread chat count in real time via SSE & API with continuous 4s polling
+  // Synchronize unread chat count in real time via context events & periodic fallback check
   useEffect(() => {
     let isMounted = true;
 
     // 1. Polling function for unread count
     const checkUnreadCount = async () => {
       try {
-        const r = await fetch('/api/chatbot/conversations?_t=' + Date.now());
+        const r = await fetch('/api/chatbot/conversations?_t=' + Date.now(), { cache: 'no-store' });
         if (r.ok) {
           const d = await r.json();
           if (isMounted && d.success && typeof d.totalUnread === 'number') {
@@ -73,64 +76,34 @@ export const AdminPortal: React.FC = () => {
     };
 
     checkUnreadCount();
-    const interval = setInterval(checkUnreadCount, 4000);
+    const interval = setInterval(checkUnreadCount, 8000);
 
-    // 2. Real-time SSE listener
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
-
-    const connectSSE = () => {
-      if (!isMounted) return;
-      try {
-        eventSource = new EventSource('/api/site/events');
-        eventSource.onmessage = (event) => {
-          try {
-            const packet = JSON.parse(event.data);
-            if (packet.type === 'chatbot_conversation_update') {
-              if (typeof packet.totalUnread === 'number') {
-                setUnreadChatCount(packet.totalUnread);
-              }
-              if (packet.newMessage?.role === 'user') {
-                setIncomingChatAlert({
-                  visitorName: packet.conversation?.visitorName || 'Website Visitor',
-                  text: packet.newMessage.content?.slice(0, 100) || 'Sent a new message',
-                });
-                setTimeout(() => setIncomingChatAlert(null), 8000);
-              }
-            } else if (packet.type === 'chatbot_unread_update') {
-              if (typeof packet.totalUnread === 'number') {
-                setUnreadChatCount(packet.totalUnread);
-              }
-            }
-          } catch {
-            // Ignore
-          }
-        };
-
-        eventSource.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-          if (isMounted) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = setTimeout(connectSSE, 5000);
-          }
-        };
-      } catch (e) {
-        console.warn('SSE subscription error in AdminPortal:', e);
+    // 2. Real-time subscriber to centralized stream
+    const unsubscribe = subscribeToRealtimeEvents((packet) => {
+      if (packet.type === 'chatbot_conversation_update') {
+        if (typeof packet.totalUnread === 'number') {
+          setUnreadChatCount(packet.totalUnread);
+        }
+        if (packet.newMessage?.role === 'user') {
+          setIncomingChatAlert({
+            visitorName: packet.conversation?.visitorName || 'Website Visitor',
+            text: packet.newMessage.content?.slice(0, 100) || 'Sent a new message',
+          });
+          setTimeout(() => setIncomingChatAlert(null), 8000);
+        }
+      } else if (packet.type === 'chatbot_unread_update') {
+        if (typeof packet.totalUnread === 'number') {
+          setUnreadChatCount(packet.totalUnread);
+        }
       }
-    };
-
-    connectSSE();
+    });
 
     return () => {
       isMounted = false;
       clearInterval(interval);
-      clearTimeout(reconnectTimeout);
-      if (eventSource) eventSource.close();
+      unsubscribe();
     };
-  }, []);
+  }, [subscribeToRealtimeEvents]);
 
   const handleManualPublish = async () => {
     const res = await publishToLive({ note: 'Manual publish via Admin Command Portal' });
@@ -243,6 +216,13 @@ export const AdminPortal: React.FC = () => {
               <div className="text-[11px] text-zinc-400 flex items-center gap-1 border-l border-zinc-800 pl-3">
                 <Clock className="w-3 h-3 text-zinc-500" />
                 <span>Last Published: <strong className="text-zinc-300">{formatPublishedTime(lastPublishedAt)}</strong></span>
+              </div>
+
+              <div className="text-[11px] flex items-center gap-1.5 border-l border-zinc-800 pl-3">
+                <span className={`w-2 h-2 rounded-full ${sseStatus === 'connected' ? 'bg-emerald-400 animate-ping' : sseStatus === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-red-400'}`} />
+                <span className={sseStatus === 'connected' ? 'text-emerald-400 font-semibold' : sseStatus === 'connecting' ? 'text-amber-400' : 'text-red-400'}>
+                  {sseStatus === 'connected' ? 'SSE Stream Active' : sseStatus === 'connecting' ? 'SSE Connecting...' : 'SSE Stream Error'}
+                </span>
               </div>
             </div>
 

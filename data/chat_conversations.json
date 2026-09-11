@@ -1,5 +1,66 @@
 [
   {
+    "id": "conv-test-visitor-a",
+    "visitorId": "vis-test-a",
+    "visitorName": "Visitor Alice",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-11T19:11:10.594Z",
+    "lastUpdatedAt": "2026-09-11T19:11:19.138Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hello Alice, our team is right here to help!",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789153870617-vyla",
+        "role": "user",
+        "senderName": "Visitor Alice",
+        "content": "Hello from Alice, testing live sync!",
+        "timestamp": "07:11 PM",
+        "createdAt": "2026-09-11T19:11:10.594Z",
+        "type": "user_message"
+      },
+      {
+        "id": "msg-admin-1789153879139",
+        "role": "admin",
+        "senderName": "Support Team",
+        "content": "Hello Alice, our team is right here to help!",
+        "timestamp": "07:11 PM",
+        "createdAt": "2026-09-11T19:11:19.138Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
+    "id": "conv-test-visitor-b",
+    "visitorId": "vis-test-b",
+    "visitorName": "Visitor Bob",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-11T19:11:12.637Z",
+    "lastUpdatedAt": "2026-09-11T19:11:12.637Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Hello from Bob, what is your vector redraw pricing?",
+    "lastEventType": "user_message",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789153872638-n9q9",
+        "role": "user",
+        "senderName": "Visitor Bob",
+        "content": "Hello from Bob, what is your vector redraw pricing?",
+        "timestamp": "07:11 PM",
+        "createdAt": "2026-09-11T19:11:12.637Z",
+        "type": "user_message"
+      }
+    ]
+  },
+  {
     "id": "conv-visitor-alex-001",
     "visitorId": "alex-001",
     "visitorName": "Alex Rivera",

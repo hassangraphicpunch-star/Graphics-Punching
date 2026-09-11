@@ -282,17 +282,54 @@ function initializePublishedDataIfMissing() {
 
 initializePublishedDataIfMissing();
 
-// Real-Time Server-Sent Events (SSE) Live Broadcast Pool
-const sseClients = new Set<express.Response>();
+// Real-Time Server-Sent Events (SSE) Live Broadcast Pool with Access Control
+interface SseClientConnection {
+  res: express.Response;
+  role: 'admin' | 'visitor';
+  conversationId?: string;
+  visitorId?: string;
+}
+
+const sseClientConnections = new Set<SseClientConnection>();
 
 function broadcastLiveSiteUpdate(updatePayload: any) {
   const sseData = `data: ${JSON.stringify(updatePayload)}\n\n`;
-  for (const client of sseClients) {
-    try {
-      client.write(sseData);
-    } catch (err) {
-      sseClients.delete(client);
+  const deadClients: SseClientConnection[] = [];
+
+  for (const client of sseClientConnections) {
+    // 1. Access control: Do not broadcast one visitor's private chat to another visitor
+    if (updatePayload.type === 'chatbot_conversation_update') {
+      const convId = updatePayload.conversation?.id || updatePayload.conversationId;
+      if (client.role === 'visitor' && client.conversationId !== convId) {
+        continue;
+      }
+    } else if (updatePayload.type === 'chatbot_admin_reply') {
+      const convId = updatePayload.conversationId || updatePayload.conversation?.id;
+      if (client.role === 'visitor' && client.conversationId !== convId) {
+        continue;
+      }
+    } else if (
+      updatePayload.type === 'chatbot_unread_update' ||
+      updatePayload.type === 'new_lead' ||
+      updatePayload.type === 'chatbot_conversations_refresh'
+    ) {
+      if (client.role === 'visitor') {
+        continue; // Admin Portal internal operations only
+      }
     }
+
+    try {
+      client.res.write(sseData);
+      if (typeof (client.res as any).flush === 'function') {
+        (client.res as any).flush();
+      }
+    } catch {
+      deadClients.push(client);
+    }
+  }
+
+  for (const dead of deadClients) {
+    sseClientConnections.delete(dead);
   }
 }
 
@@ -320,7 +357,10 @@ app.get('/api/health', (req, res) => {
     service: 'Graphics Punching Portal API',
     hasPublishedData: inMemoryPublishedData !== null,
     lastPublishedAt: inMemoryPublishedData?.publishedAt || null,
-    activeLiveClients: sseClients.size,
+    version: inMemoryPublishedData?.version || 1,
+    activeLiveClients: sseClientConnections.size,
+    activeAdminClients: Array.from(sseClientConnections).filter((c) => c.role === 'admin').length,
+    activeVisitorClients: Array.from(sseClientConnections).filter((c) => c.role === 'visitor').length,
   });
 });
 
@@ -328,7 +368,7 @@ app.get('/api/health', (req, res) => {
 app.get('/api/site/events', (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
-    'Cache-Control': 'no-cache, no-transform',
+    'Cache-Control': 'no-cache, no-transform, no-store',
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
     'Access-Control-Allow-Origin': '*',
@@ -338,30 +378,52 @@ app.get('/api/site/events', (req, res) => {
     (res as any).flushHeaders();
   }
 
-  // Send initial connection packet
-  res.write(
-    `data: ${JSON.stringify({
-      type: 'connected',
-      publishedAt: inMemoryPublishedData?.publishedAt || null,
-      version: inMemoryPublishedData?.version || 1,
-    })}\n\n`
-  );
+  const role = (req.query.role as string) === 'admin' ? 'admin' : 'visitor';
+  const conversationId = (req.query.conversationId as string) || undefined;
+  const visitorId = (req.query.visitorId as string) || undefined;
 
-  sseClients.add(res);
+  const clientInfo: SseClientConnection = {
+    res,
+    role,
+    conversationId,
+    visitorId,
+  };
 
-  // Send periodic keep-alive heartbeat to prevent reverse proxies / Cloud Run from dropping idle streams
+  sseClientConnections.add(clientInfo);
+
+  // Send immediate initial connection confirmation packet
+  const connectPacket = {
+    type: 'connected',
+    role,
+    conversationId,
+    publishedAt: inMemoryPublishedData?.publishedAt || null,
+    version: inMemoryPublishedData?.version || 1,
+    activeAdminClients: Array.from(sseClientConnections).filter((c) => c.role === 'admin').length,
+    activeVisitorClients: Array.from(sseClientConnections).filter((c) => c.role === 'visitor').length,
+    timestamp: new Date().toISOString(),
+  };
+
+  res.write(`data: ${JSON.stringify(connectPacket)}\n\n`);
+  if (typeof (res as any).flush === 'function') {
+    (res as any).flush();
+  }
+
+  // Periodic keep-alive heartbeat every 10 seconds to prevent reverse proxies / Cloud Run drops
   const heartbeatInterval = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
+      if (typeof (res as any).flush === 'function') {
+        (res as any).flush();
+      }
     } catch {
       clearInterval(heartbeatInterval);
-      sseClients.delete(res);
+      sseClientConnections.delete(clientInfo);
     }
-  }, 15000);
+  }, 10000);
 
   req.on('close', () => {
     clearInterval(heartbeatInterval);
-    sseClients.delete(res);
+    sseClientConnections.delete(clientInfo);
   });
 });
 
@@ -450,7 +512,7 @@ function handlePublishRequest(req: express.Request, res: express.Response) {
       hasPublishedData: inMemoryPublishedData !== null,
       publishedAt: safeData.publishedAt || new Date().toISOString(),
       version: safeData.version || 1,
-      activeClients: sseClients.size,
+      activeClients: sseClientConnections.size,
       data: safeData,
     });
   }
@@ -515,7 +577,7 @@ function handlePublishRequest(req: express.Request, res: express.Response) {
       message: 'Website published and synchronized live to all visitors in real-time.',
       publishedAt,
       version: currentVersion,
-      activeClientsNotified: sseClients.size,
+      activeClientsNotified: sseClientConnections.size,
       data: newPublishedData,
     });
   } catch (error: any) {
@@ -1415,11 +1477,15 @@ app.get(['/api/chatbot/conversations', '/api/chat/conversations'], (req, res) =>
     (acc, c) => acc + (c.unreadForAdmin || 0),
     0
   );
+  const activeCount = inMemoryChatConversations.filter((c) => c.status !== 'archived').length;
+  const totalRecorded = inMemoryChatConversations.length;
 
   res.json({
     success: true,
     conversations: inMemoryChatConversations,
     totalUnread,
+    activeCount,
+    totalRecorded,
     serverTime: new Date().toISOString(),
   });
 });
@@ -1848,6 +1914,15 @@ app.get(['/:filename(*.jpg)', '/:filename(*.jpeg)', '/:filename(*.png)', '/:file
     return res.sendFile(candidatePath);
   }
   next();
+});
+
+// Explicit 404 handler for unmatched /api/* calls so they never fall through into SPA HTML
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `API endpoint not found: ${req.method} ${req.originalUrl}`,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Setup Vite middleware for development or serve dist in production

@@ -107,7 +107,11 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     const connect = () => {
       if (!isMounted) return;
       try {
-        eventSource = new EventSource('/api/site/events');
+        eventSource = new EventSource(
+          `/api/site/events?role=visitor&conversationId=${encodeURIComponent(
+            conversationId
+          )}&visitorId=${encodeURIComponent(visitorId)}`
+        );
         eventSource.onmessage = (event) => {
           try {
             const packet = JSON.parse(event.data);
@@ -159,7 +163,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       if (eventSource) eventSource.close();
       clearTimeout(reconnectTimeout);
     };
-  }, [conversationId]);
+  }, [conversationId, visitorId]);
 
   // Restore conversation history from server on mount
   useEffect(() => {

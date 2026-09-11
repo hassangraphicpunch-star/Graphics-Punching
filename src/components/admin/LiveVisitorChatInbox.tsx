@@ -25,12 +25,14 @@ import {
   Monitor
 } from 'lucide-react';
 import { ChatConversation, ChatMessageItem } from '../../types/chat';
+import { useWebsiteSettings } from '../../context/AdminSettingsContext';
 
 interface LiveVisitorChatInboxProps {
   onComposeTo?: (email: string, name: string) => void;
 }
 
 export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onComposeTo }) => {
+  const { sseStatus, sseError, subscribeToRealtimeEvents } = useWebsiteSettings();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,7 +47,6 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
       return true;
     }
   });
-  const [sseStatus, setSseStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
   const [lastNotification, setLastNotification] = useState<{ title: string; text: string } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -153,99 +154,60 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     return () => clearInterval(interval);
   }, []);
 
-  // Listen to real-time Server-Sent Events (SSE) with auto-reconnection
+  // Listen to real-time events through centralized AdminSettingsContext stream
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let reconnectTimeout: any = null;
-    let isMounted = true;
-
-    const connect = () => {
-      if (!isMounted) return;
-      setSseStatus('connecting');
+    const unsubscribe = subscribeToRealtimeEvents((packet) => {
       try {
-        eventSource = new EventSource('/api/site/events');
+        if (packet.type === 'chatbot_conversation_update') {
+          const updatedConv: ChatConversation = packet.conversation;
+          const newMsg: ChatMessageItem = packet.newMessage;
 
-        eventSource.onopen = () => {
-          if (isMounted) setSseStatus('connected');
-        };
+          setConversations((prev) => {
+            const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
+            return [updatedConv, ...withoutUpdated];
+          });
 
-        eventSource.onmessage = (event) => {
-          try {
-            const packet = JSON.parse(event.data);
-
-            if (packet.type === 'connected') {
-              if (isMounted) setSseStatus('connected');
-            } else if (packet.type === 'chatbot_conversation_update') {
-              const updatedConv: ChatConversation = packet.conversation;
-              const newMsg: ChatMessageItem = packet.newMessage;
-
-              setConversations((prev) => {
-                const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
-                return [updatedConv, ...withoutUpdated];
+          // Play chime and toast only for brand new visitor messages not yet chimed
+          if (newMsg?.id && !playedMessageIdsRef.current.has(newMsg.id)) {
+            playedMessageIdsRef.current.add(newMsg.id);
+            if (newMsg.role === 'user') {
+              playChime();
+              setLastNotification({
+                title: `New Message from ${updatedConv.visitorName || 'Visitor'}`,
+                text: newMsg.content.slice(0, 80),
               });
-
-              // Play chime and toast only for brand new visitor messages not yet chimed
-              if (newMsg?.id && !playedMessageIdsRef.current.has(newMsg.id)) {
-                playedMessageIdsRef.current.add(newMsg.id);
-                if (newMsg.role === 'user') {
-                  playChime();
-                  setLastNotification({
-                    title: `New Message from ${updatedConv.visitorName}`,
-                    text: newMsg.content.slice(0, 80),
-                  });
-                  setTimeout(() => setLastNotification(null), 8000);
-                }
-              }
-            } else if (packet.type === 'chatbot_admin_reply') {
-              const updatedConv: ChatConversation = packet.conversation;
-              if (packet.adminMessage?.id) {
-                playedMessageIdsRef.current.add(packet.adminMessage.id);
-              }
-              setConversations((prev) => {
-                const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
-                return [updatedConv, ...withoutUpdated];
-              });
-            } else if (packet.type === 'chatbot_unread_update') {
-              if (packet.conversationId) {
-                setConversations((prev) =>
-                  prev.map((c) =>
-                    c.id === packet.conversationId ? { ...c, unreadForAdmin: 0 } : c
-                  )
-                );
-              }
-            } else if (packet.type === 'chatbot_conversations_refresh') {
-              fetchConversations(true);
+              setTimeout(() => setLastNotification(null), 8000);
             }
-          } catch (e) {
-            console.warn('Error parsing SSE packet:', e);
           }
-        };
-
-        eventSource.onerror = () => {
-          if (isMounted) setSseStatus('error');
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
+        } else if (packet.type === 'chatbot_admin_reply') {
+          const updatedConv: ChatConversation = packet.conversation;
+          if (packet.adminMessage?.id) {
+            playedMessageIdsRef.current.add(packet.adminMessage.id);
           }
-          if (isMounted) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = setTimeout(connect, 4000);
+          setConversations((prev) => {
+            const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
+            return [updatedConv, ...withoutUpdated];
+          });
+        } else if (packet.type === 'chatbot_unread_update') {
+          if (packet.conversationId) {
+            setConversations((prev) =>
+              prev.map((c) =>
+                c.id === packet.conversationId ? { ...c, unreadForAdmin: 0 } : c
+              )
+            );
           }
-        };
+        } else if (packet.type === 'chatbot_conversations_refresh') {
+          fetchConversations(true);
+        }
       } catch (e) {
-        if (isMounted) setSseStatus('error');
-        console.warn('SSE connection error in Chat Inbox:', e);
+        console.warn('Error processing real-time chat packet:', e);
       }
-    };
-
-    connect();
+    });
 
     return () => {
-      isMounted = false;
-      if (eventSource) eventSource.close();
-      clearTimeout(reconnectTimeout);
+      unsubscribe();
     };
-  }, [soundEnabled]);
+  }, [subscribeToRealtimeEvents, soundEnabled]);
 
   // Scroll to bottom of active conversation messages
   const scrollToBottom = () => {

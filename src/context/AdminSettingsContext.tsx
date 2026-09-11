@@ -297,6 +297,9 @@ interface AdminSettingsContextType {
   autoPublishLive: boolean;
   syncStatus: 'synced' | 'unsaved' | 'publishing' | 'offline' | 'error';
   publishError: string | null;
+  sseStatus: 'connected' | 'connecting' | 'error';
+  sseError: string | null;
+  subscribeToRealtimeEvents: (listener: (event: any) => void) => () => void;
   publishToLive: (options?: { quiet?: boolean; note?: string }) => Promise<{ success: boolean; message: string; publishedAt?: string }>;
   toggleAutoPublishLive: () => void;
   syncFromServer: () => Promise<{ success: boolean; message: string; publishedAt?: string }>;
@@ -542,6 +545,16 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   });
   const [syncStatus, setSyncStatus] = useState<'synced' | 'unsaved' | 'publishing' | 'offline' | 'error'>('synced');
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [sseStatus, setSseStatus] = useState<'connected' | 'connecting' | 'error'>('connecting');
+  const [sseError, setSseError] = useState<string | null>(null);
+  const realtimeListenersRef = useRef<Set<(event: any) => void>>(new Set());
+
+  const subscribeToRealtimeEvents = useCallback((listener: (event: any) => void) => {
+    realtimeListenersRef.current.add(listener);
+    return () => {
+      realtimeListenersRef.current.delete(listener);
+    };
+  }, []);
 
   // Track initial server fetch completion, syncing guard, and last synced baseline snapshot
   const isInitialServerFetchDone = useRef<boolean>(false);
@@ -638,10 +651,9 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       }
     }
 
-    const errorMsg = `Server returned ${lastErr || 'unknown error'}`;
-    console.warn('Could not sync with server:', errorMsg);
-    setPublishError(errorMsg);
-    setSyncStatus('error');
+    const errorMsg = `Server sync unavailable (${lastErr || 'offline'})`;
+    console.warn('Sync notice:', errorMsg);
+    setSyncStatus((prev) => (prev === 'publishing' ? prev : 'offline'));
     return { success: false, message: errorMsg };
   }, []);
 
@@ -655,93 +667,122 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   // 2. Real-Time Server-Sent Events (SSE) Listener for Live Updates
   useEffect(() => {
     let eventSource: EventSource | null = null;
-    let fallbackPollInterval: NodeJS.Timeout | null = null;
+    let reconnectTimeout: any = null;
+    let isMounted = true;
 
-    try {
-      eventSource = new EventSource('/api/site/events');
+    const connectSse = () => {
+      if (!isMounted) return;
+      setSseStatus((prev) => (prev === 'connected' ? 'connected' : 'connecting'));
 
-      eventSource.onopen = () => {
-        setSyncStatus((prev) => (prev === 'offline' || prev === 'error' ? 'synced' : prev));
-        setPublishError(null);
-      };
+      try {
+        eventSource = new EventSource('/api/site/events?role=admin');
 
-      eventSource.onmessage = (event) => {
-        try {
-          const packet = JSON.parse(event.data);
-          if (packet.type === 'published_update' && packet.data) {
-            const updated = packet.data;
-            isSyncingFromServer.current = true;
+        eventSource.onopen = () => {
+          if (!isMounted) return;
+          setSseStatus('connected');
+          setSseError(null);
+          setSyncStatus((prev) => (prev === 'offline' || prev === 'error' ? 'synced' : prev));
+        };
 
-            let updatedSettings: any = null;
-            if (updated.settings) {
-              const sanitized = sanitizeSettings(updated.settings);
-              setSettings(sanitized);
-              updatedSettings = sanitized;
+        eventSource.onmessage = (event) => {
+          if (!isMounted) return;
+          try {
+            const packet = JSON.parse(event.data);
+
+            if (packet.type === 'connected') {
+              setSseStatus('connected');
+              setSseError(null);
+            } else if (packet.type === 'published_update' && packet.data) {
+              const updated = packet.data;
+              isSyncingFromServer.current = true;
+
+              let updatedSettings: any = null;
+              if (updated.settings) {
+                const sanitized = sanitizeSettings(updated.settings);
+                setSettings(sanitized);
+                updatedSettings = sanitized;
+                try {
+                  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+                } catch {}
+              }
+
+              let updatedPortfolio: any = null;
+              if (Array.isArray(updated.portfolioItems)) {
+                setPortfolioItems(updated.portfolioItems);
+                updatedPortfolio = updated.portfolioItems;
+                try {
+                  localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(updated.portfolioItems));
+                } catch {}
+              }
+
+              if (Array.isArray(updated.leads)) setLeads(updated.leads);
+              if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
+
+              const publishTimestamp = packet.publishedAt || updated.publishedAt || new Date().toISOString();
+              setLastPublishedAt(publishTimestamp);
               try {
-                localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(sanitized));
+                localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
               } catch {}
+
+              if (updatedSettings) {
+                lastSyncedSnapshotRef.current = JSON.stringify({
+                  settings: updatedSettings,
+                  portfolioItems: updatedPortfolio || [],
+                });
+              }
+
+              setHasUnpublishedChanges(false);
+              setSyncStatus('synced');
+              setPublishError(null);
+
+              setTimeout(() => {
+                isSyncingFromServer.current = false;
+              }, 300);
+            } else if (packet.type === 'new_lead' && packet.lead) {
+              setLeads((prev) => [packet.lead, ...prev.filter((l) => l.id !== packet.lead.id)]);
+            } else if (packet.type === 'reset_to_defaults') {
+              syncFromServer();
             }
 
-            let updatedPortfolio: any = null;
-            if (Array.isArray(updated.portfolioItems)) {
-              setPortfolioItems(updated.portfolioItems);
-              updatedPortfolio = updated.portfolioItems;
+            // Distribute event packet to all subscribed portal and inbox components
+            realtimeListenersRef.current.forEach((listener) => {
               try {
-                localStorage.setItem(STORAGE_KEYS.PORTFOLIO, JSON.stringify(updated.portfolioItems));
-              } catch {}
-            }
-
-            if (Array.isArray(updated.leads)) setLeads(updated.leads);
-            if (Array.isArray(updated.emailLogs)) setEmailLogs(updated.emailLogs);
-
-            const publishTimestamp = packet.publishedAt || updated.publishedAt || new Date().toISOString();
-            setLastPublishedAt(publishTimestamp);
-            try {
-              localStorage.setItem(STORAGE_KEYS.LAST_PUBLISHED, publishTimestamp);
-            } catch {}
-
-            if (updatedSettings) {
-              lastSyncedSnapshotRef.current = JSON.stringify({
-                settings: updatedSettings,
-                portfolioItems: updatedPortfolio || [],
-              });
-            }
-
-            setHasUnpublishedChanges(false);
-            setSyncStatus('synced');
-            setPublishError(null);
-
-            setTimeout(() => {
-              isSyncingFromServer.current = false;
-            }, 300);
-          } else if (packet.type === 'new_lead' && packet.lead) {
-            setLeads((prev) => [packet.lead, ...prev.filter((l) => l.id !== packet.lead.id)]);
-          } else if (packet.type === 'reset_to_defaults') {
-            syncFromServer();
+                listener(packet);
+              } catch (err) {
+                console.warn('Realtime listener error:', err);
+              }
+            });
+          } catch {
+            // Non-JSON heartbeat
           }
-        } catch (e) {
-          console.warn('Error parsing SSE event:', e);
-        }
-      };
+        };
 
-      eventSource.onerror = () => {
-        // Fallback to periodic sync if SSE stream is temporarily interrupted
-        if (!fallbackPollInterval) {
-          fallbackPollInterval = setInterval(() => {
-            syncFromServer();
-          }, 15000);
-        }
-      };
-    } catch (e) {
-      console.warn('SSE not supported or failed to connect:', e);
-      fallbackPollInterval = setInterval(() => {
-        syncFromServer();
-      }, 15000);
-    }
+        eventSource.onerror = () => {
+          if (!isMounted) return;
+          setSseStatus('connecting');
+          setSseError('Real-time connection interrupted. Reconnecting...');
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          clearTimeout(reconnectTimeout);
+          reconnectTimeout = setTimeout(connectSse, 3500);
+        };
+      } catch (e: any) {
+        if (!isMounted) return;
+        setSseStatus('error');
+        setSseError(e?.message || 'Failed to initialize real-time event stream');
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = setTimeout(connectSse, 4000);
+      }
+    };
+
+    connectSse();
 
     return () => {
+      isMounted = false;
       if (eventSource) eventSource.close();
-      if (fallbackPollInterval) clearInterval(fallbackPollInterval);
+      clearTimeout(reconnectTimeout);
     };
   }, [syncFromServer]);
 
@@ -1212,6 +1253,9 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       autoPublishLive,
       syncStatus,
       publishError,
+      sseStatus,
+      sseError,
+      subscribeToRealtimeEvents,
       publishToLive,
       toggleAutoPublishLive,
       syncFromServer,
@@ -1260,6 +1304,9 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       autoPublishLive,
       syncStatus,
       publishError,
+      sseStatus,
+      sseError,
+      subscribeToRealtimeEvents,
       publishToLive,
       toggleAutoPublishLive,
       syncFromServer,
