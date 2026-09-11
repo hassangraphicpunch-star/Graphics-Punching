@@ -162,6 +162,7 @@ export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
     try {
       const response = await fetch('/api/gemini/email-assistant', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: actionType,
@@ -239,6 +240,7 @@ export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
     try {
       const response = await fetch('/api/gemini/email-assistant', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'suggest_subjects',
@@ -317,6 +319,7 @@ export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
     try {
       const response = await fetch('/api/email/send', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: to.trim(),

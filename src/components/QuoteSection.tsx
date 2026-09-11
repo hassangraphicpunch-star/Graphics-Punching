@@ -278,6 +278,7 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({
       // Also record lead directly to local database for instant Admin Portal Lead visibility
       const localLeadPromise = fetch('/api/leads/submit', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },

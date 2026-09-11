@@ -65,7 +65,10 @@ export const AdminPortal: React.FC = () => {
     // 1. Polling function for unread count
     const checkUnreadCount = async () => {
       try {
-        const r = await fetch('/api/chatbot/conversations?_t=' + Date.now(), { cache: 'no-store' });
+        const r = await fetch('/api/chatbot/conversations?_t=' + Date.now(), {
+          credentials: 'include',
+          cache: 'no-store',
+        });
         if (r.ok) {
           const d = await r.json();
           if (isMounted && d.success && typeof d.totalUnread === 'number') {

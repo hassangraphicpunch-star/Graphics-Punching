@@ -1,17 +1,104 @@
 [
   {
+    "id": "conv-e2e-visitor-a",
+    "visitorId": "visitor-e2e-a",
+    "visitorName": "E2E Visitor A (Alice)",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-11T19:48:14.302Z",
+    "lastUpdatedAt": "2026-09-11T19:48:19.873Z",
+    "status": "active",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hi Alice, yes! Polos are $15 flat with Tajima DST stitch files.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789156094323-jts5",
+        "role": "user",
+        "senderName": "E2E Visitor A (Alice)",
+        "content": "Alice: Need quote for left chest embroidery on 100 polos.",
+        "timestamp": "07:48 PM",
+        "createdAt": "2026-09-11T19:48:14.302Z",
+        "type": "chat_message"
+      },
+      {
+        "id": "msg-admin-1789156099874",
+        "role": "admin",
+        "senderName": "Hassan (Graphics Punching Lead Digitizer)",
+        "content": "Hi Alice, yes! Polos are $15 flat with Tajima DST stitch files.",
+        "timestamp": "07:48 PM",
+        "createdAt": "2026-09-11T19:48:19.873Z",
+        "type": "admin_reply"
+      }
+    ]
+  },
+  {
+    "id": "conv-e2e-visitor-b",
+    "visitorId": "visitor-e2e-b",
+    "visitorName": "E2E Visitor B (Bob)",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-11T19:48:16.515Z",
+    "lastUpdatedAt": "2026-09-11T19:48:16.515Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Bob: Can you convert a JPG to vector EPS?",
+    "lastEventType": "chat_message",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-1789156096516-nep9",
+        "role": "user",
+        "senderName": "E2E Visitor B (Bob)",
+        "content": "Bob: Can you convert a JPG to vector EPS?",
+        "timestamp": "07:48 PM",
+        "createdAt": "2026-09-11T19:48:16.515Z",
+        "type": "chat_message"
+      }
+    ]
+  },
+  {
+    "id": "conv-vis-test-a",
+    "visitorId": "vis-test-a",
+    "visitorName": "Visitor Alice",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-09-11T19:46:44.954Z",
+    "lastUpdatedAt": "2026-09-11T19:46:44.954Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Testing admin notification for Left Chest digitizing",
+    "lastEventType": "quote_inquiry",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "m1",
+        "role": "user",
+        "senderName": "Visitor Alice",
+        "content": "I need digitizing quote",
+        "timestamp": "07:46 PM",
+        "createdAt": "2026-09-11T19:46:44.956Z",
+        "type": "bot_reply"
+      }
+    ]
+  },
+  {
     "id": "conv-test-visitor-a",
     "visitorId": "vis-test-a",
     "visitorName": "Visitor Alice",
     "visitorEmail": "",
     "visitorPhone": "",
     "startedAt": "2026-09-11T19:11:10.594Z",
-    "lastUpdatedAt": "2026-09-11T19:11:19.138Z",
+    "lastUpdatedAt": "2026-09-11T19:46:32.185Z",
     "status": "active",
-    "unreadForAdmin": 0,
+    "unreadForAdmin": 1,
     "unreadForVisitor": 1,
-    "lastMessage": "[Admin] Hello Alice, our team is right here to help!",
-    "lastEventType": "admin_reply",
+    "lastMessage": "Hello, I need embroidery digitizing for 50 caps in DST format.",
+    "lastEventType": "chat_message",
     "sessionInfo": {},
     "messages": [
       {
@@ -31,6 +118,15 @@
         "timestamp": "07:11 PM",
         "createdAt": "2026-09-11T19:11:19.138Z",
         "type": "admin_reply"
+      },
+      {
+        "id": "msg-1789155992206-3p01",
+        "role": "user",
+        "senderName": "Visitor A",
+        "content": "Hello, I need embroidery digitizing for 50 caps in DST format.",
+        "timestamp": "07:46 PM",
+        "createdAt": "2026-09-11T19:46:32.185Z",
+        "type": "chat_message"
       }
     ]
   },

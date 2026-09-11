@@ -167,6 +167,7 @@ export const WebsiteSettingsManager: React.FC = () => {
     try {
       const res = await fetch('/api/chatbot/notify-admin', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           selectedInquiry: 'What are your digitizing turnaround times & rates? (Sample Administrator Pipeline Verification)',

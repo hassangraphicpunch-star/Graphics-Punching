@@ -55,30 +55,45 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
   const [isLoading, setIsLoading] = useState(false);
   const [notificationToast, setNotificationToast] = useState<{ show: boolean; text: string } | null>(null);
 
-  const [conversationId] = useState<string>(() => {
-    try {
-      let cid = localStorage.getItem('gp_chat_conv_id') || sessionStorage.getItem('gp_chat_conv_id');
-      if (!cid) {
-        cid = `conv-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
-        localStorage.setItem('gp_chat_conv_id', cid);
-        sessionStorage.setItem('gp_chat_conv_id', cid);
-      }
-      return cid;
-    } catch {
-      return `conv-${Date.now()}`;
-    }
-  });
-
   const [visitorId] = useState<string>(() => {
     try {
-      let vid = localStorage.getItem('gp_visitor_id');
+      let vid = localStorage.getItem('gp_visitor_id') || sessionStorage.getItem('gp_visitor_id');
+      if (!vid && typeof document !== 'undefined') {
+        const match = document.cookie.match(/(?:^|;\s*)gp_visitor_id=([^;]+)/);
+        if (match) vid = decodeURIComponent(match[1]);
+      }
       if (!vid) {
-        vid = `visitor-${Math.random().toString(36).substring(2, 8)}`;
-        localStorage.setItem('gp_visitor_id', vid);
+        vid = `visitor-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 8)}`;
+      }
+      localStorage.setItem('gp_visitor_id', vid);
+      sessionStorage.setItem('gp_visitor_id', vid);
+      if (typeof document !== 'undefined') {
+        document.cookie = `gp_visitor_id=${encodeURIComponent(vid)}; path=/; max-age=31536000; SameSite=Lax`;
       }
       return vid;
     } catch {
       return `visitor-${Date.now().toString(36)}`;
+    }
+  });
+
+  const [conversationId] = useState<string>(() => {
+    try {
+      let cid = localStorage.getItem('gp_chat_conv_id') || sessionStorage.getItem('gp_chat_conv_id');
+      if (!cid && typeof document !== 'undefined') {
+        const match = document.cookie.match(/(?:^|;\s*)gp_chat_conv_id=([^;]+)/);
+        if (match) cid = decodeURIComponent(match[1]);
+      }
+      if (!cid) {
+        cid = `conv-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+      }
+      localStorage.setItem('gp_chat_conv_id', cid);
+      sessionStorage.setItem('gp_chat_conv_id', cid);
+      if (typeof document !== 'undefined') {
+        document.cookie = `gp_chat_conv_id=${encodeURIComponent(cid)}; path=/; max-age=31536000; SameSite=Lax`;
+      }
+      return cid;
+    } catch {
+      return `conv-${Date.now()}`;
     }
   });
 
@@ -110,31 +125,56 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
         eventSource = new EventSource(
           `/api/site/events?role=visitor&conversationId=${encodeURIComponent(
             conversationId
-          )}&visitorId=${encodeURIComponent(visitorId)}`
+          )}&visitorId=${encodeURIComponent(visitorId)}`,
+          { withCredentials: true }
         );
         eventSource.onmessage = (event) => {
           try {
             const packet = JSON.parse(event.data);
-            if (
-              packet.type === 'chatbot_admin_reply' &&
-              packet.conversationId === conversationId &&
-              packet.adminMessage
-            ) {
+            const isMatch =
+              (packet.conversationId && packet.conversationId === conversationId) ||
+              (packet.conversation?.id && packet.conversation?.id === conversationId) ||
+              (packet.visitorId && packet.visitorId === visitorId) ||
+              (packet.conversation?.visitorId && packet.conversation?.visitorId === visitorId);
+
+            if (!isMatch) return; // Strict visitor isolation: ignore any packet not for this visitor
+
+            if (packet.type === 'chatbot_admin_reply' && packet.adminMessage) {
+              const adminMsg = packet.adminMessage;
               setMessages((prev) => {
-                if (prev.some((m) => m.id === packet.adminMessage.id)) return prev;
+                if (prev.some((m) => m.id === adminMsg.id)) return prev;
                 return [
                   ...prev,
                   {
-                    id: packet.adminMessage.id,
+                    id: adminMsg.id,
                     role: 'assistant',
-                    content: `🛡️ **Administrator**: ${packet.adminMessage.content}`,
+                    content: `🛡️ **Administrator**: ${adminMsg.content}`,
                     timestamp:
-                      packet.adminMessage.timestamp ||
+                      adminMsg.timestamp ||
                       new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   },
                 ];
               });
               setHasUnread(true);
+            } else if (packet.type === 'chatbot_conversation_update' && packet.newMessage) {
+              const newMsg = packet.newMessage;
+              if (newMsg.role === 'admin') {
+                setMessages((prev) => {
+                  if (prev.some((m) => m.id === newMsg.id)) return prev;
+                  return [
+                    ...prev,
+                    {
+                      id: newMsg.id,
+                      role: 'assistant',
+                      content: `🛡️ **Administrator**: ${newMsg.content}`,
+                      timestamp:
+                        newMsg.timestamp ||
+                        new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    },
+                  ];
+                });
+                setHasUnread(true);
+              }
             }
           } catch {
             // Ignore non-JSON packet
@@ -173,7 +213,8 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
         const res = await fetch(
           `/api/chatbot/conversation?conversationId=${encodeURIComponent(
             conversationId
-          )}&visitorId=${encodeURIComponent(visitorId)}&_t=${Date.now()}`
+          )}&visitorId=${encodeURIComponent(visitorId)}&_t=${Date.now()}`,
+          { credentials: 'include', cache: 'no-store' }
         );
         if (res.ok) {
           const data = await res.json();
@@ -215,7 +256,8 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
         const res = await fetch(
           `/api/chatbot/conversation?conversationId=${encodeURIComponent(
             conversationId
-          )}&_t=${Date.now()}`
+          )}&_t=${Date.now()}`,
+          { credentials: 'include', cache: 'no-store' }
         );
         if (res.ok) {
           const data = await res.json();
@@ -314,6 +356,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       // 1. Dispatch to server endpoint /api/chatbot/notify-admin
       fetch('/api/chatbot/notify-admin', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           selectedInquiry,
@@ -408,6 +451,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       try {
         const postRes = await fetch('/api/chatbot/message', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             conversationId,
@@ -442,6 +486,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       // Build request payload for backend endpoint
       const response = await fetch('/api/gemini/chat', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -481,6 +526,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       // Record assistant answer on server
       fetch('/api/chatbot/message', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId,
@@ -509,6 +555,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       // Record fallback answer on server
       fetch('/api/chatbot/message', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId,
@@ -532,6 +579,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     const text = `[Topic Inquiry] "${msg.content.slice(0, 150)}" [${msg.role}]`;
     fetch('/api/chatbot/message', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversationId,
@@ -554,6 +602,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     const text = '⚡ Requested Instant Quote via Header Shortcut';
     fetch('/api/chatbot/message', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversationId,
@@ -616,6 +665,7 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
     // Persist to server as a user interaction message
     fetch('/api/chatbot/message', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversationId,
@@ -784,6 +834,13 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 border border-zinc-950" />
             </span>
+
+            {/* Unread Admin Reply Badge */}
+            {hasUnread && (
+              <span className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-black text-white shadow-lg animate-bounce border-2 border-zinc-950">
+                1
+              </span>
+            )}
           </button>
         </div>
       )}

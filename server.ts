@@ -29,11 +29,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// Global CORS headers allowing image asset loading and API requests
+// Global CORS headers allowing image asset loading, credentialed requests, and API calls
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', '*');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma'
+  );
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
@@ -300,13 +309,23 @@ function broadcastLiveSiteUpdate(updatePayload: any) {
     // 1. Access control: Do not broadcast one visitor's private chat to another visitor
     if (updatePayload.type === 'chatbot_conversation_update') {
       const convId = updatePayload.conversation?.id || updatePayload.conversationId;
-      if (client.role === 'visitor' && client.conversationId !== convId) {
-        continue;
+      const visId = updatePayload.conversation?.visitorId || updatePayload.visitorId;
+      if (client.role === 'visitor') {
+        const matchesConv = Boolean(client.conversationId && convId && client.conversationId === convId);
+        const matchesVisitor = Boolean(client.visitorId && visId && client.visitorId === visId);
+        if (!matchesConv && !matchesVisitor) {
+          continue;
+        }
       }
     } else if (updatePayload.type === 'chatbot_admin_reply') {
       const convId = updatePayload.conversationId || updatePayload.conversation?.id;
-      if (client.role === 'visitor' && client.conversationId !== convId) {
-        continue;
+      const visId = updatePayload.conversation?.visitorId || updatePayload.visitorId;
+      if (client.role === 'visitor') {
+        const matchesConv = Boolean(client.conversationId && convId && client.conversationId === convId);
+        const matchesVisitor = Boolean(client.visitorId && visId && client.visitorId === visId);
+        if (!matchesConv && !matchesVisitor) {
+          continue;
+        }
       }
     } else if (
       updatePayload.type === 'chatbot_unread_update' ||
@@ -365,17 +384,35 @@ app.get('/api/health', (req, res) => {
 });
 
 // 2. Real-Time Live Server-Sent Events Stream (SSE)
-app.get('/api/site/events', (req, res) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream; charset=utf-8',
+const SSE_ENDPOINTS = ['/api/site/events', '/api/events', '/api/site/events/', '/api/events/'];
+app.get(SSE_ENDPOINTS, (req, res) => {
+  const origin = req.headers.origin;
+  const headers: Record<string, string> = {
+    'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform, no-store',
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
-    'Access-Control-Allow-Origin': '*',
-  });
+    Pragma: 'no-cache',
+    Expires: '0',
+  };
+
+  if (origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+    headers['Access-Control-Allow-Credentials'] = 'true';
+  } else {
+    headers['Access-Control-Allow-Origin'] = '*';
+  }
+
+  res.writeHead(200, headers);
 
   if (typeof (res as any).flushHeaders === 'function') {
     (res as any).flushHeaders();
+  }
+
+  // Send initial 2KB comment padding to punch through reverse proxy buffers (Cloud Run / Nginx) immediately
+  res.write(`: ${' '.repeat(2048)}\n\n`);
+  if (typeof (res as any).flush === 'function') {
+    (res as any).flush();
   }
 
   const role = (req.query.role as string) === 'admin' ? 'admin' : 'visitor';
@@ -1720,6 +1757,7 @@ app.post(['/api/chatbot/reply', '/api/chatbot/admin-reply', '/api/chat/reply', '
     broadcastLiveSiteUpdate({
       type: 'chatbot_admin_reply',
       conversationId: conv.id,
+      visitorId: conv.visitorId,
       conversation: conv,
       adminMessage,
     });
@@ -1929,7 +1967,7 @@ app.all('/api/*', (req, res) => {
 async function setupServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true, cors: true },
+      server: { middlewareMode: true, cors: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);

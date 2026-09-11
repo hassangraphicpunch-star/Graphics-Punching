@@ -94,6 +94,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     }
     try {
       const res = await fetch(`/api/chatbot/conversations?_t=${Date.now()}`, {
+        credentials: 'include',
         cache: 'no-store',
       });
       if (res.ok) {
@@ -225,6 +226,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     try {
       await fetch('/api/chatbot/mark-read', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId: convId }),
       });
@@ -255,6 +257,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     try {
       const res = await fetch('/api/chatbot/reply', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId: selectedConversation.id,
@@ -286,6 +289,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     try {
       await fetch('/api/chatbot/clear-or-archive', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ conversationId: convId, action }),
       });

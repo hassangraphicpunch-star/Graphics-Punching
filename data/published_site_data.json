@@ -11,7 +11,7 @@
       "darkThemeByDefault": true
     },
     "homepage": {
-      "heroBadge": "PREMIUM VECTOR ART & EMBROIDERY DIGITIZING",
+      "heroBadge": "PREMIUM VECTOR ART & EMBROIDERY DIGITIZING • VERIFIED LIVE",
       "heroHeadline": "MASTER-CRAFTED APPAREL & VECTOR ARTWORK",
       "heroHeadlineHighlight": "READY FOR PRESS & EMBROIDERY MACHINES",
       "heroSubtitle": "Transform any sketch, raster image, or emblem into high-precision, production-ready manual vector files and machine-calibrated embroidery digitizing in as fast as 2 to 6 hours.",
@@ -108,22 +108,9 @@
     }
   },
   "portfolioItems": [],
-  "leads": [
-    {
-      "id": "lead-chat-1789069123492",
-      "name": "Alex Rivera",
-      "email": "alex@customapparel.com",
-      "phone": "",
-      "company": "",
-      "serviceInterested": "Website AI Chatbot Inquiry",
-      "projectDetails": "Hello! Can you digitize a left chest cap logo in 4 hours? My email is alex@customapparel.com",
-      "date": "2026-09-10T19:38:43.475Z",
-      "status": "new",
-      "source": "Website AI Chatbot"
-    }
-  ],
+  "leads": [],
   "emailLogs": [],
-  "publishedAt": "2026-09-11T19:11:24.896Z",
-  "version": 23,
-  "publishNote": "Verification Publish Test"
+  "publishedAt": "2026-09-11T19:48:29.237Z",
+  "version": 27,
+  "publishNote": "E2E verification publish"
 }

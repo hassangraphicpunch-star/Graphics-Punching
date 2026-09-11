@@ -570,6 +570,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     for (const ep of endpoints) {
       try {
         const res = await fetch(`${ep}?_t=${Date.now()}`, {
+          credentials: 'include',
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -675,7 +676,9 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       setSseStatus((prev) => (prev === 'connected' ? 'connected' : 'connecting'));
 
       try {
-        eventSource = new EventSource('/api/site/events?role=admin');
+        eventSource = new EventSource('/api/site/events?role=admin', {
+          withCredentials: true,
+        });
 
         eventSource.onopen = () => {
           if (!isMounted) return;
@@ -825,6 +828,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
         try {
           const attempt = await fetch(`${endpoint}?_t=${Date.now()}`, {
             method: 'POST',
+            credentials: 'include',
             cache: 'no-store',
             headers: {
               'Content-Type': 'application/json',
