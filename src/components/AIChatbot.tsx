@@ -465,6 +465,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
               visitorId,
               url: window.location.href,
               platform: typeof navigator !== 'undefined' ? navigator.platform : 'Web',
+              viewport: typeof window !== 'undefined' ? `${window.innerWidth}x${window.innerHeight}` : 'Desktop',
             },
           }),
         });

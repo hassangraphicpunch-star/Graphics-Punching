@@ -175,7 +175,7 @@ const BASELINE_SETTINGS = {
     quickLinksTitle: 'Quick Directory',
   },
   chatbot: {
-    enabled: false,
+    enabled: true,
     botName: 'Punchy AI',
     botRole: 'Graphics Punching Virtual Assistant',
     welcomeMessage: 'Hello! I am Punchy AI, your 24/7 artwork and digitizing specialist. How can we elevate your apparel decoration today?',
@@ -1408,64 +1408,7 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         ? recipients.join(', ')
         : 'graphicspunching264@gmail.com';
 
-    // Also ensure conversation is recorded in persistent inMemoryChatConversations safely
-    try {
-      const convId = sessionInfo?.conversationId || (visitorId ? `conv-${visitorId}` : `conv-${Date.now()}`);
-      let existingConv = inMemoryChatConversations.find((c) => c.id === convId);
-
-      const formattedMessages = Array.isArray(conversation)
-        ? conversation.map((msg: any, i: number) => ({
-            id: msg.id || `msg-${Date.now()}-${i}`,
-            role: msg.role === 'admin' ? 'admin' : (msg.sender === 'user' || msg.role === 'user' ? 'user' : 'assistant'),
-            senderName: msg.role === 'admin' ? (msg.senderName || 'Graphics Punching Support Desk') : (msg.sender === 'user' || msg.role === 'user' ? (visitorName || 'Website Visitor') : 'Punchy AI'),
-            content: msg.text || msg.content || '',
-            timestamp: msg.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            createdAt: msg.createdAt || new Date().toISOString(),
-            type: msg.type || (msg.sender === 'user' ? eventType : 'bot_reply'),
-            suggestedAction: msg.suggestedAction,
-          }))
-        : [];
-
-      if (existingConv) {
-        // Merge missing messages rather than overwriting to preserve admin replies and history
-        if (formattedMessages.length > 0) {
-          const existingIds = new Set(existingConv.messages.map((m: any) => m.id));
-          for (const fm of formattedMessages) {
-            if (!existingIds.has(fm.id)) {
-              existingConv.messages.push(fm);
-              existingIds.add(fm.id);
-            }
-          }
-        }
-        existingConv.lastMessage = cleanedInquiry || existingConv.lastMessage;
-        existingConv.lastUpdatedAt = nowIso;
-        existingConv.lastEventType = eventType;
-        if (sessionInfo) existingConv.sessionInfo = { ...existingConv.sessionInfo, ...sessionInfo };
-      } else {
-        existingConv = {
-          id: convId,
-          visitorId: visitorId || `visitor-${Date.now().toString(36)}`,
-          visitorName: visitorName || 'Website Visitor',
-          visitorEmail: sessionInfo?.visitorEmail || '',
-          visitorPhone: sessionInfo?.visitorPhone || '',
-          startedAt: nowIso,
-          lastUpdatedAt: nowIso,
-          status: 'active',
-          unreadForAdmin: 1,
-          unreadForVisitor: 0,
-          lastMessage: cleanedInquiry,
-          lastEventType: eventType,
-          sessionInfo: sessionInfo || {},
-          messages: formattedMessages,
-        };
-        inMemoryChatConversations.unshift(existingConv);
-      }
-
-      saveChatConversationsToDisk(inMemoryChatConversations);
-    } catch (saveErr) {
-      console.warn('Could not record chat conversation in persistent store:', saveErr);
-    }
-
+    // Note: /api/chatbot/message is the authoritative storage path for all chat messages.
     return res.json({
       success: true,
       message: 'Admin notification email dispatched successfully',
@@ -1492,345 +1435,670 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
   }
 });
 
-// ======================================================================
-// REAL-TIME VISITOR CHATBOT INBOX & SYNCHRONIZATION ENDPOINTS
-// ======================================================================
+// ============================================================
+// GRAPHICS PUNCHING - CENTRAL CHATBOT MESSAGE STORE
+// ============================================================
 
-// Fetch All Chat Conversations with unread metrics
-app.get(['/api/chatbot/conversations', '/api/chat/conversations'], (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+function createChatId() {
+  return `conv-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 9)}`;
+}
 
-  // Synchronize from disk if empty
-  if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
-    loadChatConversationsFromDisk();
-  }
+function createMessageId() {
+  return `msg-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 9)}`;
+}
 
-  // Always return sorted with most recently updated conversations on top
-  inMemoryChatConversations.sort((a, b) => new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime());
+function getOrCreateConversation(data: any) {
+  const conversationId =
+    typeof data.conversationId === 'string' && data.conversationId.trim()
+      ? data.conversationId.trim()
+      : createChatId();
 
-  const totalUnread = inMemoryChatConversations.reduce(
-    (acc, c) => acc + (c.unreadForAdmin || 0),
-    0
-  );
-  const activeCount = inMemoryChatConversations.filter((c) => c.status !== 'archived').length;
-  const totalRecorded = inMemoryChatConversations.length;
-
-  res.json({
-    success: true,
-    conversations: inMemoryChatConversations,
-    totalUnread,
-    activeCount,
-    totalRecorded,
-    serverTime: new Date().toISOString(),
-  });
-});
-
-// Fetch a single Conversation by conversationId or visitorId (for visitor chat persistence & refresh)
-app.get(['/api/chatbot/conversation', '/api/chatbot/conversation/:id', '/api/chat/conversation', '/api/chat/conversation/:id'], (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-
-  const convId = (req.query.conversationId as string) || req.params.id || '';
-  const visitorId = (req.query.visitorId as string) || '';
-
-  if (!convId && !visitorId) {
-    return res.status(400).json({ success: false, error: 'conversationId or visitorId is required' });
-  }
-
-  if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
-    loadChatConversationsFromDisk();
-  }
-
-  const conv = inMemoryChatConversations.find(
-    (c) => (convId && c.id === convId) || (visitorId && c.visitorId === visitorId)
+  let conversation = inMemoryChatConversations.find(
+    (item: any) =>
+      item.id === conversationId ||
+      (data.visitorId && item.visitorId === data.visitorId)
   );
 
-  res.json({
-    success: true,
-    conversation: conv || null,
-  });
-});
+  if (!conversation) {
+    conversation = {
+      id: conversationId,
+      visitorId:
+        data.visitorId ||
+        `visitor-${Math.random().toString(36).slice(2, 9)}`,
+      visitorName: data.visitorName || 'Website Visitor',
+      visitorEmail: data.visitorEmail || '',
+      visitorPhone: data.visitorPhone || '',
+      startedAt: new Date().toISOString(),
+      lastUpdatedAt: new Date().toISOString(),
+      status: 'active',
 
-// Post a new visitor message, quick reply, or inquiry to a conversation
-app.post(['/api/chatbot/message', '/api/chat/message'], (req, res) => {
-  try {
-    const {
-      conversationId,
-      visitorId,
-      visitorName,
-      visitorEmail,
-      visitorPhone,
-      message,
-      content,
-      text,
-      role = 'user',
-      type = 'user_message',
-      sessionInfo,
-      suggestedAction,
-    } = req.body;
+      // IMPORTANT:
+      // Customer messages increase this count.
+      unreadForAdmin: 0,
 
-    const rawMsg = message || content || text;
+      // Admin messages increase this count.
+      unreadForVisitor: 0,
 
-    if (!rawMsg || (typeof rawMsg !== 'string' && typeof rawMsg.content !== 'string' && typeof rawMsg.text !== 'string')) {
-      return res.status(400).json({ success: false, error: 'Message content is required.' });
-    }
-
-    const messageText = typeof rawMsg === 'string' ? rawMsg : (rawMsg.content || rawMsg.text || '');
-    const nowIso = new Date().toISOString();
-    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    // Normalize role so visitor messages are always treated as user role
-    const normalizedRole = role === 'admin' ? 'admin' : (role === 'assistant' || role === 'bot') ? 'assistant' : 'user';
-
-    // Auto-detect email, phone, and name if visitor provided it in message text
-    const emailMatch = messageText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
-    const phoneMatch = messageText.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
-    const nameMatch = messageText.match(/(?:my name is|i am|this is|i'm)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)/i);
-
-    const detectedEmail = visitorEmail || (emailMatch ? emailMatch[0] : '');
-    const detectedPhone = visitorPhone || (phoneMatch ? phoneMatch[0] : '');
-    const detectedName = nameMatch ? nameMatch[1].trim() : '';
-
-    const resolvedVisitorName =
-      visitorName ||
-      detectedName ||
-      (visitorId ? `Visitor #${visitorId.slice(-4).toUpperCase()}` : 'Website Visitor');
-
-    const messageItem = {
-      id: (rawMsg && typeof rawMsg === 'object' && rawMsg.id) || req.body.id || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      role: normalizedRole as any,
-      senderName: normalizedRole === 'user' ? resolvedVisitorName : normalizedRole === 'admin' ? 'Support Desk' : 'Punchy AI',
-      content: messageText,
-      timestamp: formattedTime,
-      createdAt: nowIso,
-      type: type || 'user_message',
-      suggestedAction: suggestedAction || (rawMsg && typeof rawMsg === 'object' ? rawMsg.suggestedAction : undefined),
+      lastMessage: '',
+      lastEventType: '',
+      sessionInfo: data.sessionInfo || {},
+      messages: [],
     };
 
-    const convId = conversationId || (visitorId ? `conv-${visitorId}` : `conv-${Date.now()}`);
-    let conv = inMemoryChatConversations.find((c) => c.id === convId);
+    inMemoryChatConversations.unshift(conversation);
+  }
 
-    if (!conv) {
-      conv = {
-        id: convId,
-        visitorId: visitorId || `visitor-${Date.now().toString(36)}`,
-        visitorName: resolvedVisitorName,
-        visitorEmail: detectedEmail,
-        visitorPhone: detectedPhone,
-        startedAt: nowIso,
-        lastUpdatedAt: nowIso,
-        status: 'active',
-        unreadForAdmin: normalizedRole === 'user' ? 1 : 0,
-        unreadForVisitor: 0,
-        lastMessage: messageText,
-        lastEventType: type,
-        sessionInfo: sessionInfo || {},
-        messages: [messageItem],
+  return conversation;
+}
+
+function normalizeChatMessage(data: any, conversation: any) {
+  const role =
+    data.role === 'admin'
+      ? 'admin'
+      : data.role === 'assistant'
+        ? 'assistant'
+        : 'user';
+
+  const content = String(
+    data.message ||
+      data.content ||
+      data.text ||
+      ''
+  ).trim();
+
+  return {
+    id: data.id || createMessageId(),
+    role,
+    senderName:
+      role === 'admin'
+        ? data.senderName || 'Graphics Punching Support'
+        : role === 'assistant'
+          ? 'Punchy AI'
+          : data.visitorName || conversation.visitorName || 'Website Visitor',
+
+    content,
+
+    type: data.type || 'user_message',
+
+    timestamp:
+      data.timestamp ||
+      new Date().toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+
+    createdAt: new Date().toISOString(),
+
+    suggestedAction: data.suggestedAction || undefined,
+  };
+}
+
+// ============================================================
+// POST CHAT MESSAGE
+// ============================================================
+
+app.post(
+  ['/api/chatbot/message', '/api/chat/message'],
+  (req, res) => {
+    try {
+      const {
+        conversationId,
+        visitorId,
+        visitorName,
+        visitorEmail,
+        visitorPhone,
+        message,
+        content,
+        text,
+        role = 'user',
+        type = 'user_message',
+        sessionInfo = {},
+        suggestedAction,
+      } = req.body || {};
+
+      const rawContent = message || content || text;
+
+      if (!rawContent || !String(rawContent).trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'Message content is required.',
+        });
+      }
+
+      if (!Array.isArray(inMemoryChatConversations) || inMemoryChatConversations.length === 0) {
+        loadChatConversationsFromDisk();
+      }
+
+      const conversation = getOrCreateConversation({
+        conversationId,
+        visitorId,
+        visitorName,
+        visitorEmail,
+        visitorPhone,
+        sessionInfo,
+      });
+
+      // Update visitor information whenever it becomes available.
+      if (visitorName) conversation.visitorName = visitorName;
+      if (visitorEmail) conversation.visitorEmail = visitorEmail;
+      if (visitorPhone) conversation.visitorPhone = visitorPhone;
+
+      // Detect email & phone in message text
+      const contentStr = String(rawContent);
+      const emailMatch = contentStr.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/i);
+      const phoneMatch = contentStr.match(/(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/);
+      if (emailMatch && !conversation.visitorEmail) conversation.visitorEmail = emailMatch[0];
+      if (phoneMatch && !conversation.visitorPhone) conversation.visitorPhone = phoneMatch[0];
+
+      conversation.sessionInfo = {
+        ...(conversation.sessionInfo || {}),
+        ...(sessionInfo || {}),
       };
-      inMemoryChatConversations.unshift(conv);
-    } else {
-      conv.messages.push(messageItem);
-      conv.lastMessage = messageText;
-      conv.lastUpdatedAt = nowIso;
-      conv.lastEventType = type;
-      if (resolvedVisitorName && (!conv.visitorName || conv.visitorName === 'Website Visitor')) {
-        conv.visitorName = resolvedVisitorName;
-      }
-      if (detectedEmail && !conv.visitorEmail) conv.visitorEmail = detectedEmail;
-      if (detectedPhone && !conv.visitorPhone) conv.visitorPhone = detectedPhone;
-      if (sessionInfo) conv.sessionInfo = { ...conv.sessionInfo, ...sessionInfo };
 
-      if (normalizedRole === 'user') {
-        conv.unreadForAdmin = (conv.unreadForAdmin || 0) + 1;
-        conv.status = 'active';
-      }
-
-      // Reposition this updated conversation to the top
-      const existingIdx = inMemoryChatConversations.findIndex((c) => c.id === conv.id);
-      if (existingIdx > 0) {
-        inMemoryChatConversations.splice(existingIdx, 1);
-        inMemoryChatConversations.unshift(conv);
-      }
-    }
-
-    // Auto-record lead in CRM if email was detected from chatbot message
-    if (detectedEmail && inMemoryPublishedData) {
-      if (!inMemoryPublishedData.leads) inMemoryPublishedData.leads = [];
-      const exists = inMemoryPublishedData.leads.some(
-        (l: any) => l.email && l.email.toLowerCase() === detectedEmail.toLowerCase()
+      const chatMessage = normalizeChatMessage(
+        {
+          id: req.body.id,
+          message: String(rawContent),
+          role,
+          type,
+          visitorName: conversation.visitorName,
+          suggestedAction,
+        },
+        conversation
       );
-      if (!exists) {
-        const autoLead = {
-          id: `lead-chat-${Date.now()}`,
-          name: conv.visitorName || 'Website Chatbot Visitor',
-          email: detectedEmail,
-          phone: detectedPhone || '',
-          company: '',
-          serviceInterested: 'Website AI Chatbot Inquiry',
-          projectDetails: messageText,
-          date: nowIso,
-          status: 'new',
-          source: 'Website AI Chatbot',
-        };
-        inMemoryPublishedData.leads.unshift(autoLead);
-        savePublishedDataToDisk(inMemoryPublishedData);
-        broadcastLiveSiteUpdate({ type: 'new_lead', lead: autoLead });
+
+      // Prevent accidental duplicate messages.
+      const duplicate = conversation.messages.some(
+        (m: any) =>
+          m.id === chatMessage.id ||
+          (
+            m.role === chatMessage.role &&
+            m.content === chatMessage.content &&
+            Date.now() -
+              new Date(m.createdAt).getTime() <
+              3000
+          )
+      );
+
+      if (!duplicate) {
+        conversation.messages.push(chatMessage);
       }
+
+      conversation.lastMessage = chatMessage.content;
+      conversation.lastUpdatedAt = new Date().toISOString();
+      conversation.lastEventType = type;
+
+      // Customer message = unread for admin.
+      if (chatMessage.role === 'user') {
+        conversation.unreadForAdmin =
+          Number(conversation.unreadForAdmin || 0) + 1;
+        conversation.status = 'active';
+      }
+
+      // Admin reply = unread for visitor.
+      if (chatMessage.role === 'admin') {
+        conversation.unreadForVisitor =
+          Number(conversation.unreadForVisitor || 0) + 1;
+      }
+
+      // Keep newest conversations first.
+      inMemoryChatConversations.sort(
+        (a: any, b: any) =>
+          new Date(b.lastUpdatedAt).getTime() -
+          new Date(a.lastUpdatedAt).getTime()
+      );
+
+      const saved = saveChatConversationsToDisk(
+        inMemoryChatConversations
+      );
+
+      if (!saved) {
+        return res.status(500).json({
+          success: false,
+          error: 'Unable to save chatbot conversation.',
+        });
+      }
+
+      const totalUnread = inMemoryChatConversations.reduce(
+        (total: number, item: any) =>
+          total + Number(item.unreadForAdmin || 0),
+        0
+      );
+
+      // Send the new message immediately to Admin Portal.
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_conversation_update',
+        conversation: {
+          ...conversation,
+          messages: conversation.messages,
+        },
+        conversationId: conversation.id,
+        visitorId: conversation.visitorId,
+        newMessage: chatMessage,
+        totalUnread,
+        timestamp: new Date().toISOString(),
+      });
+
+      return res.json({
+        success: true,
+        conversationId: conversation.id,
+        visitorId: conversation.visitorId,
+        message: chatMessage,
+        conversation,
+        totalUnread,
+      });
+    } catch (error: any) {
+      console.error(
+        '[CHATBOT MESSAGE ERROR]',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          'Failed to save chatbot message.',
+      });
     }
-
-    saveChatConversationsToDisk(inMemoryChatConversations);
-
-    const totalUnread = inMemoryChatConversations.reduce((acc, c) => acc + (c.unreadForAdmin || 0), 0);
-
-    // Real-time broadcast to Admin Portal & open visitor windows
-    broadcastLiveSiteUpdate({
-      type: 'chatbot_conversation_update',
-      conversation: conv,
-      newMessage: messageItem,
-      totalUnread,
-    });
-
-    res.json({
-      success: true,
-      conversation: conv,
-      message: messageItem,
-      totalUnread,
-    });
-  } catch (error: any) {
-    console.error('Error in /api/chatbot/message:', error);
-    res.status(500).json({ success: false, error: error?.message || 'Failed to record chat message' });
   }
-});
+);
 
-// Administrator replies live to a visitor
-app.post(['/api/chatbot/reply', '/api/chatbot/admin-reply', '/api/chat/reply', '/api/chat/admin-reply'], (req, res) => {
-  try {
-    const { conversationId, adminName = 'Graphics Punching Support Desk' } = req.body;
-    const rawReply = req.body.replyText || req.body.reply || req.body.adminReply || req.body.message;
+// ============================================================
+// ADMIN - GET ALL CHAT CONVERSATIONS
+// ============================================================
 
-    if (!conversationId || !rawReply || !rawReply.trim()) {
-      return res.status(400).json({ success: false, error: 'conversationId and reply text are required.' });
+app.get(
+  ['/api/chatbot/conversations', '/api/chat/conversations'],
+  (req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      if (
+        !Array.isArray(inMemoryChatConversations) ||
+        inMemoryChatConversations.length === 0
+      ) {
+        loadChatConversationsFromDisk();
+      }
+
+      inMemoryChatConversations.sort(
+        (a: any, b: any) =>
+          new Date(b.lastUpdatedAt).getTime() -
+          new Date(a.lastUpdatedAt).getTime()
+      );
+
+      const totalUnread =
+        inMemoryChatConversations.reduce(
+          (total: number, conversation: any) =>
+            total +
+            Number(
+              conversation.unreadForAdmin || 0
+            ),
+          0
+        );
+
+      return res.json({
+        success: true,
+        conversations: inMemoryChatConversations,
+        totalUnread,
+        activeCount:
+          inMemoryChatConversations.filter(
+            (c: any) =>
+              c.status !== 'archived'
+          ).length,
+        totalRecorded:
+          inMemoryChatConversations.length,
+        serverTime:
+          new Date().toISOString(),
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          'Failed to load conversations.',
+      });
     }
-
-    if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
-      loadChatConversationsFromDisk();
-    }
-
-    const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
-    if (!conv) {
-      return res.status(404).json({ success: false, error: 'Conversation not found.' });
-    }
-
-    const nowIso = new Date().toISOString();
-    const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    const adminMessage = {
-      id: `msg-admin-${Date.now()}`,
-      role: 'admin',
-      senderName: adminName,
-      content: rawReply.trim(),
-      timestamp: formattedTime,
-      createdAt: nowIso,
-      type: 'admin_reply',
-    };
-
-    conv.messages.push(adminMessage);
-    conv.lastMessage = `[Admin] ${rawReply.trim()}`;
-    conv.lastUpdatedAt = nowIso;
-    conv.lastEventType = 'admin_reply';
-    conv.unreadForAdmin = 0;
-    conv.unreadForVisitor = (conv.unreadForVisitor || 0) + 1;
-
-    // Reposition this conversation to the top
-    const existingIdx = inMemoryChatConversations.findIndex((c) => c.id === conv.id);
-    if (existingIdx > 0) {
-      inMemoryChatConversations.splice(existingIdx, 1);
-      inMemoryChatConversations.unshift(conv);
-    }
-
-    saveChatConversationsToDisk(inMemoryChatConversations);
-
-    // Broadcast live event to visitor widget and admin tabs
-    broadcastLiveSiteUpdate({
-      type: 'chatbot_admin_reply',
-      conversationId: conv.id,
-      visitorId: conv.visitorId,
-      conversation: conv,
-      adminMessage,
-    });
-
-    res.json({
-      success: true,
-      conversation: conv,
-      adminMessage,
-    });
-  } catch (error: any) {
-    console.error('Error in /api/chatbot/reply:', error);
-    res.status(500).json({ success: false, error: error?.message || 'Failed to send admin reply' });
   }
-});
+);
 
-// Mark conversation as read by administrator
-app.post(['/api/chatbot/mark-read', '/api/chat/mark-read', '/api/chat/read'], (req, res) => {
-  try {
-    const { conversationId } = req.body;
-    if (!conversationId) {
-      return res.status(400).json({ success: false, error: 'conversationId is required.' });
+// ============================================================
+// GET ONE CHAT CONVERSATION
+// ============================================================
+
+app.get(
+  [
+    '/api/chatbot/conversation',
+    '/api/chatbot/conversation/:id',
+    '/api/chat/conversation',
+    '/api/chat/conversation/:id',
+  ],
+  (req, res) => {
+    try {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+
+      if (
+        !Array.isArray(inMemoryChatConversations) ||
+        inMemoryChatConversations.length === 0
+      ) {
+        loadChatConversationsFromDisk();
+      }
+
+      const conversationId =
+        String(
+          req.query.conversationId ||
+            req.params.id ||
+            ''
+        ).trim();
+
+      const visitorId =
+        String(
+          req.query.visitorId || ''
+        ).trim();
+
+      const conversation =
+        inMemoryChatConversations.find(
+          (item: any) =>
+            (conversationId &&
+              item.id === conversationId) ||
+            (visitorId &&
+              item.visitorId === visitorId)
+        ) || null;
+
+      return res.json({
+        success: true,
+        conversation,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          'Failed to load conversation.',
+      });
     }
-
-    if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
-      loadChatConversationsFromDisk();
-    }
-
-    const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
-    if (conv) {
-      conv.unreadForAdmin = 0;
-      saveChatConversationsToDisk(inMemoryChatConversations);
-    }
-
-    const totalUnread = inMemoryChatConversations.reduce((acc, c) => acc + (c.unreadForAdmin || 0), 0);
-
-    broadcastLiveSiteUpdate({
-      type: 'chatbot_unread_update',
-      conversationId,
-      totalUnread,
-    });
-
-    res.json({ success: true, conversationId, totalUnread });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error?.message });
   }
-});
+);
+
+// ============================================================
+// ADMIN REPLY TO CUSTOMER
+// ============================================================
+
+app.post(
+  [
+    '/api/chatbot/admin-reply',
+    '/api/chatbot/reply',
+    '/api/chat/admin-reply',
+    '/api/chat/reply',
+  ],
+  (req, res) => {
+    try {
+      const {
+        conversationId,
+        message,
+        content,
+        replyText: rawReplyText,
+        reply,
+        adminReply,
+        adminName,
+      } = req.body || {};
+
+      const replyText = String(
+        message || content || rawReplyText || reply || adminReply || ''
+      ).trim();
+
+      if (!conversationId) {
+        return res.status(400).json({
+          success: false,
+          error: 'conversationId is required.',
+        });
+      }
+
+      if (!replyText) {
+        return res.status(400).json({
+          success: false,
+          error: 'Reply message is required.',
+        });
+      }
+
+      if (
+        !Array.isArray(inMemoryChatConversations) ||
+        inMemoryChatConversations.length === 0
+      ) {
+        loadChatConversationsFromDisk();
+      }
+
+      const conversation =
+        inMemoryChatConversations.find(
+          (item: any) =>
+            item.id === conversationId
+        );
+
+      if (!conversation) {
+        return res.status(404).json({
+          success: false,
+          error: 'Conversation not found.',
+        });
+      }
+
+      const adminMessage = {
+        id: createMessageId(),
+        role: 'admin',
+        senderName:
+          adminName || 'Graphics Punching Support',
+        content: replyText,
+        type: 'admin_reply',
+        timestamp:
+          new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        createdAt:
+          new Date().toISOString(),
+      };
+
+      conversation.messages.push(
+        adminMessage
+      );
+
+      conversation.lastMessage = `[Admin] ${replyText}`;
+      conversation.lastUpdatedAt =
+        new Date().toISOString();
+      conversation.lastEventType =
+        'admin_reply';
+      conversation.unreadForVisitor =
+        Number(
+          conversation.unreadForVisitor || 0
+        ) + 1;
+
+      // Admin has now handled the unread customer messages.
+      conversation.unreadForAdmin = 0;
+
+      // Keep newest conversations first.
+      inMemoryChatConversations.sort(
+        (a: any, b: any) =>
+          new Date(b.lastUpdatedAt).getTime() -
+          new Date(a.lastUpdatedAt).getTime()
+      );
+
+      saveChatConversationsToDisk(
+        inMemoryChatConversations
+      );
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_admin_reply',
+        conversationId:
+          conversation.id,
+        visitorId:
+          conversation.visitorId,
+        conversation,
+        message: adminMessage,
+        adminMessage,
+        timestamp:
+          new Date().toISOString(),
+      });
+
+      return res.json({
+        success: true,
+        message: adminMessage,
+        adminMessage,
+        conversation,
+      });
+    } catch (error: any) {
+      console.error(
+        '[ADMIN CHAT REPLY ERROR]',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          'Failed to send admin reply.',
+      });
+    }
+  }
+);
+
+// ============================================================
+// ADMIN MARKS CHAT AS READ
+// ============================================================
+
+app.post(
+  [
+    '/api/chatbot/conversation/read',
+    '/api/chatbot/mark-read',
+    '/api/chat/conversation/read',
+    '/api/chat/mark-read',
+    '/api/chat/read',
+  ],
+  (req, res) => {
+    try {
+      const { conversationId } =
+        req.body || {};
+
+      if (!conversationId) {
+        return res.status(400).json({
+          success: false,
+          error: 'conversationId is required.',
+        });
+      }
+
+      if (
+        !Array.isArray(inMemoryChatConversations) ||
+        inMemoryChatConversations.length === 0
+      ) {
+        loadChatConversationsFromDisk();
+      }
+
+      const conversation =
+        inMemoryChatConversations.find(
+          (item: any) =>
+            item.id === conversationId
+        );
+
+      if (!conversation) {
+        return res.status(404).json({
+          success: false,
+          error: 'Conversation not found.',
+        });
+      }
+
+      conversation.unreadForAdmin = 0;
+      conversation.lastUpdatedAt =
+        new Date().toISOString();
+
+      saveChatConversationsToDisk(
+        inMemoryChatConversations
+      );
+
+      const totalUnread =
+        inMemoryChatConversations.reduce(
+          (total: number, item: any) =>
+            total +
+            Number(
+              item.unreadForAdmin || 0
+            ),
+          0
+        );
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_unread_update',
+        conversationId,
+        totalUnread,
+      });
+
+      return res.json({
+        success: true,
+        conversationId,
+        totalUnread,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error:
+          error?.message ||
+          'Failed to mark conversation read.',
+      });
+    }
+  }
+);
 
 // Clear or Archive a conversation
-app.post(['/api/chatbot/clear-or-archive', '/api/chat/clear-or-archive', '/api/chat/archive'], (req, res) => {
-  try {
-    const { conversationId, action = 'archive' } = req.body;
-    if (!conversationId) {
-      return res.status(400).json({ success: false, error: 'conversationId is required.' });
+app.post(
+  [
+    '/api/chatbot/clear-or-archive',
+    '/api/chat/clear-or-archive',
+    '/api/chat/archive',
+  ],
+  (req, res) => {
+    try {
+      const { conversationId, action = 'archive' } = req.body || {};
+      if (!conversationId) {
+        return res.status(400).json({ success: false, error: 'conversationId is required.' });
+      }
+
+      if (!Array.isArray(inMemoryChatConversations) || inMemoryChatConversations.length === 0) {
+        loadChatConversationsFromDisk();
+      }
+
+      if (action === 'delete') {
+        inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== conversationId);
+      } else {
+        const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
+        if (conv) conv.status = 'archived';
+      }
+
+      saveChatConversationsToDisk(inMemoryChatConversations);
+
+      const totalUnread = inMemoryChatConversations.reduce(
+        (acc: number, c: any) => acc + (c.unreadForAdmin || 0),
+        0
+      );
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_unread_update',
+        conversationId,
+        totalUnread,
+      });
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_conversations_refresh',
+      });
+
+      return res.json({ success: true, conversationId, action, totalUnread });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, error: error?.message });
     }
-
-    if (action === 'delete') {
-      inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== conversationId);
-    } else {
-      const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
-      if (conv) conv.status = 'archived';
-    }
-
-    saveChatConversationsToDisk(inMemoryChatConversations);
-
-    broadcastLiveSiteUpdate({
-      type: 'chatbot_conversations_refresh',
-    });
-
-    res.json({ success: true, conversationId, action });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error?.message });
   }
-});
+);
 
 // 8. Email Dispatch Endpoint (Connected Gmail / Mail Service Integration)
 app.post('/api/email/send', async (req, res) => {
