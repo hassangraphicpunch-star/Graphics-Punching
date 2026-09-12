@@ -4,6 +4,7 @@ import fs from 'fs';
 import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import nodemailer from 'nodemailer';
 
 const app = express();
 const PORT = 3000;
@@ -77,26 +78,73 @@ app.use((req, res, next) => {
   next();
 });
 
-// Persistent Storage Management for Published Live Website Data
-const DATA_DIR = path.join(process.cwd(), 'data');
-const PUBLISHED_DATA_FILE = path.join(DATA_DIR, 'published_site_data.json');
+// ============================================================
+// PERSISTENT STORAGE: SUPABASE / POSTGRESQL (PRODUCTION & SERVERLESS)
+// ============================================================
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Ensure data directory exists with full read/write permissions
-try {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  try {
-    fs.chmodSync(DATA_DIR, 0o777);
-  } catch {}
-} catch (err) {
-  console.warn('Could not initialize data directory:', err);
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    '[STORAGE] SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY not configured. Running with in-memory persistence fallback.'
+  );
 }
 
-// In-memory cache of published live site data and chat conversations
+// In-memory mirror cache of published live site data and chat conversations
 let inMemoryPublishedData: any = null;
-const CHAT_CONVERSATIONS_FILE = path.join(DATA_DIR, 'chat_conversations.json');
 let inMemoryChatConversations: any[] = [];
+
+async function supabaseRequest(
+  table: string,
+  options: {
+    method?: string;
+    body?: any;
+    query?: string;
+    prefer?: string;
+  } = {}
+) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('Persistent database is not configured.');
+  }
+
+  const url =
+    `${SUPABASE_URL}/rest/v1/${table}` +
+    (options.query ? `?${options.query}` : '');
+
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: options.prefer || 'return=representation',
+    },
+    body:
+      options.body !== undefined
+        ? JSON.stringify(options.body)
+        : undefined,
+  });
+
+  const text = await response.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Supabase ${response.status}: ${
+        typeof data === 'string'
+          ? data
+          : JSON.stringify(data)
+      }`
+    );
+  }
+
+  return data;
+}
 
 // Deep merge utility for settings objects
 function deepMerge(target: any, source: any): any {
@@ -229,162 +277,388 @@ const BASELINE_SETTINGS = {
   },
 };
 
-function loadPublishedDataFromDisk() {
-  try {
-    if (fs.existsSync(PUBLISHED_DATA_FILE)) {
-      const raw = fs.readFileSync(PUBLISHED_DATA_FILE, 'utf-8');
-      inMemoryPublishedData = JSON.parse(raw);
-      console.log('Loaded published site data from disk.');
-    }
-  } catch (err) {
-    console.error('Error reading published site data file:', err);
-  }
-}
+// ============================================================
+// DATABASE-BACKED STORAGE HELPERS (PERSISTENT & SERVERLESS-READY)
+// ============================================================
 
-function loadChatConversationsFromDisk() {
-  try {
-    if (fs.existsSync(CHAT_CONVERSATIONS_FILE)) {
-      const raw = fs.readFileSync(CHAT_CONVERSATIONS_FILE, 'utf-8');
-      inMemoryChatConversations = JSON.parse(raw);
-      if (!Array.isArray(inMemoryChatConversations)) {
-        inMemoryChatConversations = [];
-      }
-      console.log(`Loaded ${inMemoryChatConversations.length} chat conversations from disk.`);
-    } else {
-      inMemoryChatConversations = [];
-    }
-  } catch (err) {
-    console.error('Error reading chat conversations file:', err);
-    inMemoryChatConversations = [];
-  }
-}
-
-function saveChatConversationsToDisk(conversations: any[]): boolean {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(conversations, null, 2), 'utf-8');
-    inMemoryChatConversations = conversations;
-    return true;
-  } catch (err) {
-    console.error('Error saving chat conversations to disk:', err);
-    return false;
-  }
-}
-
-function savePublishedDataToDisk(data: any): boolean {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(PUBLISHED_DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    inMemoryPublishedData = data;
-    return true;
-  } catch (err) {
-    console.error('Error saving published site data to disk:', err);
-    return false;
-  }
-}
-
-// Initial load
-loadPublishedDataFromDisk();
-loadChatConversationsFromDisk();
-
-function initializePublishedDataIfMissing() {
-  try {
-    const needsSeeding =
-      !inMemoryPublishedData ||
-      !inMemoryPublishedData.settings ||
-      Object.keys(inMemoryPublishedData.settings).length < 5;
-
-    if (needsSeeding) {
-      const now = new Date().toISOString();
-      const initialData = {
-        settings: deepMerge(BASELINE_SETTINGS, inMemoryPublishedData?.settings || {}),
-        portfolioItems:
-          Array.isArray(inMemoryPublishedData?.portfolioItems) && inMemoryPublishedData.portfolioItems.length > 0
-            ? inMemoryPublishedData.portfolioItems
-            : [],
-        leads: Array.isArray(inMemoryPublishedData?.leads) ? inMemoryPublishedData.leads : [],
-        emailLogs: Array.isArray(inMemoryPublishedData?.emailLogs) ? inMemoryPublishedData.emailLogs : [],
-        publishedAt: now,
-        version: (inMemoryPublishedData?.version || 0) + 1,
-        publishNote: 'Authoritative baseline site data initialized and synchronized',
-      };
-      savePublishedDataToDisk(initialData);
-      console.log('Seeded complete authoritative baseline published site data on server disk.');
-    }
-  } catch (err) {
-    console.warn('Could not initialize published site data:', err);
-  }
-}
-
-initializePublishedDataIfMissing();
-
-// Real-Time Server-Sent Events (SSE) Live Broadcast Pool with Access Control
-interface SseClientConnection {
-  res: express.Response;
-  role: 'admin' | 'visitor';
-  conversationId?: string;
-  visitorId?: string;
-}
-
-const sseClientConnections = new Set<SseClientConnection>();
-
-function broadcastLiveSiteUpdate(updatePayload: any) {
-  const sseData = `data: ${JSON.stringify(updatePayload)}\n\n`;
-  const deadClients: SseClientConnection[] = [];
-
-  for (const client of sseClientConnections) {
-    // 1. Access control: Do not broadcast one visitor's private chat to another visitor
-    if (updatePayload.type === 'chatbot_conversation_update') {
-      const convId = updatePayload.conversation?.id || updatePayload.conversationId;
-      const visId = updatePayload.conversation?.visitorId || updatePayload.visitorId;
-      if (client.role === 'visitor') {
-        const matchesConv = Boolean(client.conversationId && convId && client.conversationId === convId);
-        const matchesVisitor = Boolean(client.visitorId && visId && client.visitorId === visId);
-        if (!matchesConv && !matchesVisitor) {
-          continue;
-        }
-      }
-    } else if (updatePayload.type === 'chatbot_admin_reply') {
-      const convId = updatePayload.conversationId || updatePayload.conversation?.id;
-      const visId = updatePayload.conversation?.visitorId || updatePayload.visitorId;
-      if (client.role === 'visitor') {
-        const matchesConv = Boolean(client.conversationId && convId && client.conversationId === convId);
-        const matchesVisitor = Boolean(client.visitorId && visId && client.visitorId === visId);
-        if (!matchesConv && !matchesVisitor) {
-          continue;
-        }
-      }
-    } else if (
-      updatePayload.type === 'chatbot_unread_update' ||
-      updatePayload.type === 'new_lead' ||
-      updatePayload.type === 'chatbot_conversations_refresh'
-    ) {
-      if (client.role === 'visitor') {
-        continue; // Admin Portal internal operations only
-      }
-    }
-
+async function getPublishedData() {
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      client.res.write(sseData);
-      if (typeof (client.res as any).flush === 'function') {
-        (client.res as any).flush();
+      const rows = await supabaseRequest('site_state', {
+        query: 'id=eq.production&select=*',
+      });
+
+      if (!rows?.length) {
+        const initial = {
+          id: 'production',
+          settings: inMemoryPublishedData?.settings || BASELINE_SETTINGS,
+          portfolio_items: inMemoryPublishedData?.portfolioItems || [],
+          leads: inMemoryPublishedData?.leads || [],
+          email_logs: inMemoryPublishedData?.emailLogs || [],
+          version: inMemoryPublishedData?.version || 1,
+          published_at: inMemoryPublishedData?.publishedAt || new Date().toISOString(),
+          publish_note: inMemoryPublishedData?.publishNote || 'Initial production baseline',
+          updated_at: new Date().toISOString(),
+        };
+
+        const created = await supabaseRequest('site_state', {
+          method: 'POST',
+          body: initial,
+        });
+
+        const res = created?.[0] || initial;
+        inMemoryPublishedData = {
+          settings: res.settings,
+          portfolioItems: res.portfolio_items,
+          leads: res.leads,
+          emailLogs: res.email_logs,
+          version: res.version,
+          publishedAt: res.published_at,
+          publishNote: res.publish_note,
+        };
+        return res;
       }
-    } catch {
-      deadClients.push(client);
+
+      const row = rows[0];
+      inMemoryPublishedData = {
+        settings: row.settings,
+        portfolioItems: row.portfolio_items,
+        leads: row.leads,
+        emailLogs: row.email_logs,
+        version: row.version,
+        publishedAt: row.published_at,
+        publishNote: row.publish_note,
+      };
+      return row;
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase getPublishedData failed, using in-memory state:', err?.message || err);
     }
   }
 
-  for (const dead of deadClients) {
-    sseClientConnections.delete(dead);
+  // In-memory fallback
+  if (!inMemoryPublishedData) {
+    inMemoryPublishedData = {
+      id: 'production',
+      settings: BASELINE_SETTINGS,
+      portfolioItems: [],
+      leads: [],
+      emailLogs: [],
+      version: 1,
+      publishedAt: new Date().toISOString(),
+      publishNote: 'Initial baseline state',
+    };
+  }
+
+  return {
+    id: 'production',
+    settings: inMemoryPublishedData.settings || BASELINE_SETTINGS,
+    portfolio_items: inMemoryPublishedData.portfolioItems || [],
+    leads: inMemoryPublishedData.leads || [],
+    email_logs: inMemoryPublishedData.emailLogs || [],
+    version: inMemoryPublishedData.version || 1,
+    published_at: inMemoryPublishedData.publishedAt || new Date().toISOString(),
+    publish_note: inMemoryPublishedData.publishNote || '',
+  };
+}
+
+async function savePublishedData(data: any) {
+  inMemoryPublishedData = {
+    settings: data.settings,
+    portfolioItems: data.portfolioItems || data.portfolio_items || [],
+    leads: data.leads || [],
+    emailLogs: data.emailLogs || data.email_logs || [],
+    version: data.version,
+    publishedAt: data.publishedAt || data.published_at || new Date().toISOString(),
+    publishNote: data.publishNote || data.publish_note || '',
+  };
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const rows = await supabaseRequest('site_state', {
+        method: 'PATCH',
+        query: 'id=eq.production',
+        body: {
+          settings: inMemoryPublishedData.settings,
+          portfolio_items: inMemoryPublishedData.portfolioItems,
+          leads: inMemoryPublishedData.leads,
+          email_logs: inMemoryPublishedData.emailLogs,
+          version: inMemoryPublishedData.version,
+          published_at: inMemoryPublishedData.publishedAt,
+          publish_note: inMemoryPublishedData.publishNote,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      return rows?.[0] || inMemoryPublishedData;
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase savePublishedData failed, state saved in memory:', err?.message || err);
+    }
+  }
+
+  return inMemoryPublishedData;
+}
+
+// Conversation persistence helpers
+async function getConversation(id: string) {
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const rows = await supabaseRequest('chat_conversations', {
+        query: `id=eq.${encodeURIComponent(id)}&select=*`,
+      });
+      if (rows?.[0]) {
+        const row = rows[0];
+        return {
+          id: row.id,
+          visitorId: row.visitor_id,
+          visitorName: row.visitor_name,
+          visitorEmail: row.visitor_email,
+          visitorPhone: row.visitor_phone,
+          status: row.status,
+          unreadForAdmin: row.unread_for_admin,
+          unreadForVisitor: row.unread_for_visitor,
+          lastMessage: row.last_message,
+          lastEventType: row.last_event_type,
+          sessionInfo: row.session_info || {},
+          messages: row.messages || [],
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          lastUpdatedAt: row.updated_at,
+        };
+      }
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase getConversation error, fallback to memory:', err?.message);
+    }
+  }
+
+  return inMemoryChatConversations.find((c: any) => c.id === id) || null;
+}
+
+async function saveConversation(conversation: any) {
+  const idx = inMemoryChatConversations.findIndex((c: any) => c.id === conversation.id);
+  if (idx >= 0) {
+    inMemoryChatConversations[idx] = conversation;
+  } else {
+    inMemoryChatConversations.unshift(conversation);
+  }
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const payload = {
+        id: conversation.id,
+        visitor_id: conversation.visitorId || null,
+        visitor_name: conversation.visitorName || '',
+        visitor_email: conversation.visitorEmail || '',
+        visitor_phone: conversation.visitorPhone || '',
+        status: conversation.status || 'active',
+        unread_for_admin: Number(conversation.unreadForAdmin || 0),
+        unread_for_visitor: Number(conversation.unreadForVisitor || 0),
+        last_message: conversation.lastMessage || '',
+        last_event_type: conversation.lastEventType || '',
+        session_info: conversation.sessionInfo || {},
+        messages: conversation.messages || [],
+        updated_at: new Date().toISOString(),
+      };
+
+      const rows = await supabaseRequest('chat_conversations', {
+        method: 'POST',
+        query: 'on_conflict=id',
+        body: payload,
+        prefer: 'resolution=merge-duplicates,return=representation',
+      });
+      return rows?.[0] || conversation;
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase saveConversation error, saved in memory:', err?.message);
+    }
+  }
+
+  return conversation;
+}
+
+async function getAllConversations() {
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      const rows = await supabaseRequest('chat_conversations', {
+        query: 'select=*&order=updated_at.desc',
+      });
+      if (Array.isArray(rows)) {
+        const mapped = rows.map((row: any) => ({
+          id: row.id,
+          visitorId: row.visitor_id,
+          visitorName: row.visitor_name,
+          visitorEmail: row.visitor_email,
+          visitorPhone: row.visitor_phone,
+          status: row.status,
+          unreadForAdmin: row.unread_for_admin,
+          unreadForVisitor: row.unread_for_visitor,
+          lastMessage: row.last_message,
+          lastEventType: row.last_event_type,
+          sessionInfo: row.session_info || {},
+          messages: row.messages || [],
+          lastUpdatedAt: row.updated_at,
+          createdAt: row.created_at,
+        }));
+        inMemoryChatConversations = mapped;
+        return mapped;
+      }
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase getAllConversations error, fallback to memory:', err?.message);
+    }
+  }
+
+  inMemoryChatConversations.sort(
+    (a: any, b: any) =>
+      new Date(b.lastUpdatedAt || b.updatedAt || 0).getTime() -
+      new Date(a.lastUpdatedAt || a.updatedAt || 0).getTime()
+  );
+  return inMemoryChatConversations;
+}
+
+async function markConversationAsRead(id: string): Promise<boolean> {
+  let found = false;
+  const conv = inMemoryChatConversations.find((c) => c.id === id);
+  if (conv) {
+    conv.unreadForAdmin = 0;
+    conv.lastUpdatedAt = new Date().toISOString();
+    found = true;
+  }
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await supabaseRequest('chat_conversations', {
+        method: 'PATCH',
+        query: `id=eq.${encodeURIComponent(id)}`,
+        body: {
+          unread_for_admin: 0,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      found = true;
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase markRead error:', err?.message);
+    }
+  }
+
+  return found;
+}
+
+async function archiveOrDeleteConversation(id: string, action: 'archive' | 'delete') {
+  if (action === 'delete') {
+    inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== id);
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        await supabaseRequest('chat_conversations', {
+          method: 'DELETE',
+          query: `id=eq.${encodeURIComponent(id)}`,
+        });
+      } catch (err: any) {
+        console.warn('[STORAGE] Supabase delete conversation error:', err?.message);
+      }
+    }
+  } else {
+    const conv = inMemoryChatConversations.find((c) => c.id === id);
+    if (conv) {
+      conv.status = 'archived';
+      conv.lastUpdatedAt = new Date().toISOString();
+    }
+    if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        await supabaseRequest('chat_conversations', {
+          method: 'PATCH',
+          query: `id=eq.${encodeURIComponent(id)}`,
+          body: {
+            status: 'archived',
+            updated_at: new Date().toISOString(),
+          },
+        });
+      } catch (err: any) {
+        console.warn('[STORAGE] Supabase archive conversation error:', err?.message);
+      }
+    }
   }
 }
 
-// Authoritative Server-Side Dispatched Email Logger & Real-Time Sync
-function recordDispatchedEmailLog(logInput: {
+// ============================================================
+// REAL EMAIL DISPATCH ENGINE (NODEMAILER / SMTP / GMAIL)
+// ============================================================
+
+function getMailTransporter() {
+  const host = process.env.SMTP_HOST;
+  const port = Number(process.env.SMTP_PORT) || 587;
+  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD;
+
+  if (user && pass) {
+    if (host) {
+      return nodemailer.createTransport({
+        host,
+        port,
+        secure: port === 465,
+        auth: { user, pass },
+      });
+    }
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+    });
+  }
+  return null;
+}
+
+async function dispatchRealEmail(options: {
+  to: string;
+  from?: string;
+  replyTo?: string;
+  subject: string;
+  body: string;
+  html?: string;
+  attachments?: any[];
+  cc?: string;
+  bcc?: string;
+}): Promise<{ sent: boolean; messageId?: string; error?: string; notConfigured?: boolean }> {
+  const transporter = getMailTransporter();
+  if (!transporter) {
+    return {
+      sent: false,
+      notConfigured: true,
+      error: 'SMTP credentials not configured. Set SMTP_USER and SMTP_PASS or GMAIL_APP_PASSWORD to send live emails.',
+    };
+  }
+
+  try {
+    const fromAddress = options.from || process.env.SMTP_USER || 'graphicspunching264@gmail.com';
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: options.to,
+      replyTo: options.replyTo || fromAddress,
+      subject: options.subject,
+      text: options.body,
+      html: options.html,
+      cc: options.cc,
+      bcc: options.bcc,
+      attachments: Array.isArray(options.attachments)
+        ? options.attachments.map((att: any) => ({
+            filename: att.name || 'attachment',
+            content: att.data || att.content,
+            contentType: att.type,
+          }))
+        : undefined,
+    });
+
+    console.log(`[REAL MAIL DELIVERED] messageId=${info.messageId} to=${options.to}`);
+    return {
+      sent: true,
+      messageId: info.messageId,
+    };
+  } catch (err: any) {
+    console.error('[REAL MAIL FAILED]', err);
+    return {
+      sent: false,
+      error: err?.message || 'Failed to dispatch email via mail transport',
+    };
+  }
+}
+
+// Authoritative Dispatched Email Logger
+async function recordDispatchedEmailLog(logInput: {
   to: string;
   recipientName?: string;
   from?: string;
@@ -395,22 +669,10 @@ function recordDispatchedEmailLog(logInput: {
   status?: 'sent' | 'delivered' | 'draft' | 'failed' | 'queued';
   thread?: any[];
   trackingId?: string;
+  providerMessageId?: string | null;
+  error?: string | null;
 }) {
   try {
-    if (!inMemoryPublishedData) {
-      loadPublishedDataFromDisk();
-    }
-    if (!inMemoryPublishedData) {
-      inMemoryPublishedData = {
-        settings: BASELINE_SETTINGS,
-        portfolioItems: [],
-        leads: [],
-        emailLogs: [],
-        publishedAt: new Date().toISOString(),
-        version: 1,
-      };
-    }
-
     const trackingId =
       logInput.trackingId ||
       `GP-MSG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -419,44 +681,46 @@ function recordDispatchedEmailLog(logInput: {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       trackingId,
       to: logInput.to || 'graphicspunching264@gmail.com',
-      recipientName: logInput.recipientName || 'Administrator',
-      from: logInput.from || 'Punchy AI <graphicspunching264@gmail.com>',
+      recipientName: logInput.recipientName || '',
+      from: logInput.from || 'graphicspunching264@gmail.com',
       replyTo: logInput.replyTo || 'graphicspunching264@gmail.com',
-      subject: logInput.subject || '[Inquiry Alert] Live Visitor Chat',
+      subject: logInput.subject || 'Graphics Punching Notification',
       body: logInput.body || '',
       attachments: logInput.attachments || [],
-      status: logInput.status || 'delivered',
+      status: logInput.status || 'queued',
       sentAt: new Date().toISOString(),
+      providerMessageId: logInput.providerMessageId || null,
+      error: logInput.error || null,
       thread: logInput.thread || [],
     };
 
-    if (!Array.isArray(inMemoryPublishedData.emailLogs)) {
-      inMemoryPublishedData.emailLogs = [];
+    const published = await getPublishedData();
+    const currentLogs = Array.isArray(published.email_logs || published.emailLogs)
+      ? [...(published.email_logs || published.emailLogs)]
+      : [];
+
+    currentLogs.unshift(newLog);
+    if (currentLogs.length > 200) {
+      currentLogs.length = 200;
     }
 
-    // Prepend new email log and cap at 200 logs
-    inMemoryPublishedData.emailLogs.unshift(newLog);
-    if (inMemoryPublishedData.emailLogs.length > 200) {
-      inMemoryPublishedData.emailLogs = inMemoryPublishedData.emailLogs.slice(0, 200);
-    }
-
-    savePublishedDataToDisk(inMemoryPublishedData);
+    await savePublishedData({
+      settings: published.settings || BASELINE_SETTINGS,
+      portfolioItems: published.portfolio_items || published.portfolioItems || [],
+      leads: published.leads || [],
+      emailLogs: currentLogs,
+      version: published.version || 1,
+      publishedAt: published.published_at || published.publishedAt || new Date().toISOString(),
+    });
 
     // Broadcast email log update to all admin sessions
     broadcastLiveSiteUpdate({
       type: 'new_email_log',
       emailLog: newLog,
-      totalEmailLogs: inMemoryPublishedData.emailLogs.length,
+      totalEmailLogs: currentLogs.length,
     });
 
-    broadcastLiveSiteUpdate({
-      type: 'published_update',
-      publishedAt: inMemoryPublishedData.publishedAt,
-      version: inMemoryPublishedData.version,
-      data: inMemoryPublishedData,
-    });
-
-    console.log(`[EMAIL DISPATCHED & LOGGED] ${trackingId} -> ${newLog.to} ("${newLog.subject}")`);
+    console.log(`[EMAIL LOGGED] ${newLog.status.toUpperCase()}: ${trackingId} -> ${newLog.to} ("${newLog.subject}")`);
     return newLog;
   } catch (err) {
     console.error('Error in recordDispatchedEmailLog:', err);
@@ -465,17 +729,16 @@ function recordDispatchedEmailLog(logInput: {
 }
 
 // Synchronize incoming chatbot conversations with contact leads store
-function syncConversationToLead(conversation: any) {
+async function syncConversationToLead(conversation: any) {
   try {
-    if (!inMemoryPublishedData) loadPublishedDataFromDisk();
-    if (!inMemoryPublishedData) return;
-    if (!Array.isArray(inMemoryPublishedData.leads)) inMemoryPublishedData.leads = [];
+    const published = await getPublishedData();
+    const leads = Array.isArray(published.leads) ? [...published.leads] : [];
 
     const visitorEmail = conversation.visitorEmail?.trim();
     const visitorPhone = conversation.visitorPhone?.trim();
     const visitorName = conversation.visitorName?.trim() || 'Website Visitor';
 
-    let existingLead = inMemoryPublishedData.leads.find(
+    let existingLead = leads.find(
       (l: any) =>
         (visitorEmail && l.email && l.email.toLowerCase() === visitorEmail.toLowerCase()) ||
         l.id === `lead-chat-${conversation.id}` ||
@@ -501,14 +764,21 @@ function syncConversationToLead(conversation: any) {
         source: `AI Chatbot (${conversation.visitorId || 'visitor'})`,
         estimateTotal: null,
       };
-      inMemoryPublishedData.leads.unshift(newLead);
+      leads.unshift(newLead);
       broadcastLiveSiteUpdate({
         type: 'new_lead',
         lead: newLead,
       });
     }
 
-    savePublishedDataToDisk(inMemoryPublishedData);
+    await savePublishedData({
+      settings: published.settings || BASELINE_SETTINGS,
+      portfolioItems: published.portfolio_items || published.portfolioItems || [],
+      leads,
+      emailLogs: published.email_logs || published.emailLogs || [],
+      version: published.version || 1,
+      publishedAt: published.published_at || published.publishedAt || new Date().toISOString(),
+    });
   } catch (err) {
     console.error('Error in syncConversationToLead:', err);
   }
@@ -530,34 +800,64 @@ function getGeminiClient(): GoogleGenAI {
   return aiClient;
 }
 
-// 1. Health & Server Status check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'Graphics Punching Portal API',
-    hasPublishedData: inMemoryPublishedData !== null,
-    lastPublishedAt: inMemoryPublishedData?.publishedAt || null,
-    version: inMemoryPublishedData?.version || 1,
-    activeLiveClients: sseClientConnections.size,
-    activeAdminClients: Array.from(sseClientConnections).filter((c) => c.role === 'admin').length,
-    activeVisitorClients: Array.from(sseClientConnections).filter((c) => c.role === 'visitor').length,
-  });
-});
+// ============================================================
+// SERVER-SENT EVENTS (SSE) - CONSOLIDATED LIVE BROADCAST POOL
+// ============================================================
 
-// 2. Real-Time Live Server-Sent Events Stream (SSE)
-const SSE_ENDPOINTS = [
-  '/api/site/events',
-  '/api/events',
-  '/api/site/events/',
-  '/api/events/',
-  '/api/site/stream',
-  '/api/stream',
-];
+interface SseClientConnection {
+  res: express.Response;
+  role: 'admin' | 'visitor';
+  conversationId?: string;
+  visitorId?: string;
+}
 
-const handleSseStream = (req: express.Request, res: express.Response) => {
+const sseClientConnections = new Set<SseClientConnection>();
+
+function broadcastLiveSiteUpdate(updatePayload: any) {
+  const sseData = `data: ${JSON.stringify(updatePayload)}\n\n`;
+  const deadClients: SseClientConnection[] = [];
+
+  for (const client of sseClientConnections) {
+    // Visitor access isolation: do not broadcast one visitor's chat to another
+    if (updatePayload.type === 'chatbot_conversation_update' || updatePayload.type === 'chatbot_admin_reply') {
+      const convId = updatePayload.conversation?.id || updatePayload.conversationId;
+      const visId = updatePayload.conversation?.visitorId || updatePayload.visitorId;
+      if (client.role === 'visitor') {
+        const matchesConv = Boolean(client.conversationId && convId && client.conversationId === convId);
+        const matchesVisitor = Boolean(client.visitorId && visId && client.visitorId === visId);
+        if (!matchesConv && !matchesVisitor) {
+          continue;
+        }
+      }
+    } else if (
+      updatePayload.type === 'chatbot_unread_update' ||
+      updatePayload.type === 'new_lead' ||
+      updatePayload.type === 'new_email_log' ||
+      updatePayload.type === 'chatbot_conversations_refresh'
+    ) {
+      if (client.role === 'visitor') {
+        continue; // Internal admin events only
+      }
+    }
+
+    try {
+      client.res.write(sseData);
+      if (typeof (client.res as any).flush === 'function') {
+        (client.res as any).flush();
+      }
+    } catch {
+      deadClients.push(client);
+    }
+  }
+
+  for (const dead of deadClients) {
+    sseClientConnections.delete(dead);
+  }
+}
+
+const handleSseStream = async (req: express.Request, res: express.Response) => {
   const origin = req.headers.origin;
-  
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform, no-store');
   res.setHeader('Connection', 'keep-alive');
@@ -578,7 +878,7 @@ const handleSseStream = (req: express.Request, res: express.Response) => {
     (res as any).flushHeaders();
   }
 
-  // Send initial 2KB comment padding to punch through reverse proxy buffers (Cloud Run / Nginx) immediately
+  // Send initial 2KB comment padding to punch through reverse proxy buffers
   res.write(`: ${' '.repeat(2048)}\n\n`);
   if (typeof (res as any).flush === 'function') {
     (res as any).flush();
@@ -598,12 +898,13 @@ const handleSseStream = (req: express.Request, res: express.Response) => {
   sseClientConnections.add(clientInfo);
 
   // Send immediate initial connection confirmation packet
+  const published = await getPublishedData();
   const connectPacket = {
     type: 'connected',
     role,
     conversationId,
-    publishedAt: inMemoryPublishedData?.publishedAt || null,
-    version: inMemoryPublishedData?.version || 1,
+    publishedAt: published?.published_at || published?.publishedAt || null,
+    version: published?.version || 1,
     activeAdminClients: Array.from(sseClientConnections).filter((c) => c.role === 'admin').length,
     activeVisitorClients: Array.from(sseClientConnections).filter((c) => c.role === 'visitor').length,
     timestamp: new Date().toISOString(),
@@ -614,7 +915,7 @@ const handleSseStream = (req: express.Request, res: express.Response) => {
     (res as any).flush();
   }
 
-  // Periodic keep-alive heartbeat every 8 seconds with active ping event
+  // Periodic keep-alive heartbeat every 15 seconds
   const heartbeatInterval = setInterval(() => {
     try {
       res.write(`: heartbeat\n\nevent: ping\ndata: {"time":"${new Date().toISOString()}"}\n\n`);
@@ -625,7 +926,7 @@ const handleSseStream = (req: express.Request, res: express.Response) => {
       clearInterval(heartbeatInterval);
       sseClientConnections.delete(clientInfo);
     }
-  }, 8000);
+  }, 15000);
 
   req.on('close', () => {
     clearInterval(heartbeatInterval);
@@ -638,233 +939,150 @@ const handleSsePost = (req: express.Request, res: express.Response) => {
   broadcastLiveSiteUpdate(eventPayload);
   res.json({
     success: true,
-    message: 'Event received and broadcasted to all live SSE clients',
+    message: 'Event received and broadcasted to active live SSE clients',
     activeClients: sseClientConnections.size,
     timestamp: new Date().toISOString(),
   });
 };
 
-app.get(SSE_ENDPOINTS, handleSseStream);
-app.post(SSE_ENDPOINTS, handleSsePost);
-app.options(SSE_ENDPOINTS, (req, res) => res.sendStatus(204));
+// Single, canonical registration for SSE endpoints
+app.get(['/api/events', '/api/site/events'], handleSseStream);
+app.post(['/api/events', '/api/site/events'], handleSsePost);
+app.options(['/api/events', '/api/site/events'], (req, res) => res.sendStatus(204));
 
-// Explicit route declarations matching user architecture
-app.post('/api/site/events', handleSsePost);
-app.post('/api/events', handleSsePost);
-app.get('/api/site/events', handleSseStream);
-app.get('/api/events', handleSseStream);
-
-// 3. Fetch Live Published Website Data (Called by all live visitors on load)
-app.get('/api/site/data', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
-
-  if (inMemoryPublishedData) {
-    const safeData = {
-      ...inMemoryPublishedData,
-      settings: deepMerge(BASELINE_SETTINGS, inMemoryPublishedData.settings || {}),
-    };
-    return res.json({
-      success: true,
-      hasCustomData: true,
-      publishedAt: inMemoryPublishedData.publishedAt,
-      version: inMemoryPublishedData.version || 1,
-      data: safeData,
-    });
-  }
-
-  // Check disk if not in memory
-  if (fs.existsSync(PUBLISHED_DATA_FILE)) {
-    loadPublishedDataFromDisk();
-    if (inMemoryPublishedData) {
-      const safeData = {
-        ...inMemoryPublishedData,
-        settings: deepMerge(BASELINE_SETTINGS, inMemoryPublishedData.settings || {}),
-      };
-      return res.json({
-        success: true,
-        hasCustomData: true,
-        publishedAt: inMemoryPublishedData.publishedAt,
-        version: inMemoryPublishedData.version || 1,
-        data: safeData,
-      });
-    }
-  }
-
-  // No published override on disk yet; return baseline defaults
+// 1. Health & Server Status check endpoint
+app.get('/api/health', async (req, res) => {
+  const published = await getPublishedData();
   res.json({
-    success: true,
-    hasCustomData: false,
-    publishedAt: null,
-    version: 0,
-    data: {
-      settings: BASELINE_SETTINGS,
-      portfolioItems: [],
-      leads: [],
-      emailLogs: [],
-    },
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    service: 'Graphics Punching Portal API',
+    storageMode: SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? 'supabase_postgres' : 'in_memory_fallback',
+    lastPublishedAt: published?.published_at || published?.publishedAt || null,
+    version: published?.version || 1,
+    activeLiveClients: sseClientConnections.size,
+    activeAdminClients: Array.from(sseClientConnections).filter((c) => c.role === 'admin').length,
+    activeVisitorClients: Array.from(sseClientConnections).filter((c) => c.role === 'visitor').length,
   });
 });
 
-app.get('/api/site/version', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.json({
-    success: true,
-    version: inMemoryPublishedData?.version || 0,
-    publishedAt: inMemoryPublishedData?.publishedAt || null,
-  });
-});
-
-// Reusable Publish Handler supporting multiple route aliases and methods
-function handlePublishRequest(req: express.Request, res: express.Response) {
-  // If GET, return latest publication status rather than an error
-  if (req.method === 'GET') {
-    if (!inMemoryPublishedData) {
-      loadPublishedDataFromDisk();
-    }
-    const safeData = inMemoryPublishedData || {
-      settings: BASELINE_SETTINGS,
-      portfolioItems: [],
-      leads: [],
-      emailLogs: [],
-      publishedAt: new Date().toISOString(),
-      version: 1,
-    };
-    return res.json({
-      success: true,
-      status: 'ready',
-      message: 'Publish pipeline online and active.',
-      hasPublishedData: inMemoryPublishedData !== null,
-      publishedAt: safeData.publishedAt || new Date().toISOString(),
-      version: safeData.version || 1,
-      activeClients: sseClientConnections.size,
-      data: safeData,
-    });
-  }
-
+// 2. Fetch Live Published Website Data
+app.get('/api/site/data', async (req, res) => {
   try {
-    const payload = req.body || {};
-    const effectiveSettings = payload.settings || payload.data?.settings;
-    const effectivePortfolio = payload.portfolioItems || payload.data?.portfolioItems;
-    const effectiveLeads = payload.leads || payload.data?.leads;
-    const effectiveEmailLogs = payload.emailLogs || payload.data?.emailLogs;
-    const note = payload.note || payload.data?.note || 'Admin published updates to live website';
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    const row = await getPublishedData();
 
-    // If data directory or cache was not loaded, load now
-    if (!inMemoryPublishedData) {
-      loadPublishedDataFromDisk();
-    }
-
-    const currentVersion = (inMemoryPublishedData?.version || 0) + 1;
-    const publishedAt = new Date().toISOString();
-
-    const mergedSettings = deepMerge(
-      BASELINE_SETTINGS,
-      deepMerge(inMemoryPublishedData?.settings || {}, effectiveSettings || {})
-    );
-
-    const mergedPortfolio =
-      Array.isArray(effectivePortfolio) && effectivePortfolio.length > 0
-        ? effectivePortfolio
-        : inMemoryPublishedData?.portfolioItems || [];
-
-    const newPublishedData = {
-      settings: mergedSettings,
-      portfolioItems: mergedPortfolio,
-      leads: effectiveLeads || inMemoryPublishedData?.leads || [],
-      emailLogs: effectiveEmailLogs || inMemoryPublishedData?.emailLogs || [],
-      publishedAt,
-      version: currentVersion,
-      publishNote: note,
+    const data = {
+      settings: deepMerge(BASELINE_SETTINGS, row.settings || {}),
+      portfolioItems: row.portfolio_items || row.portfolioItems || [],
+      leads: row.leads || [],
+      emailLogs: row.email_logs || row.emailLogs || [],
+      publishedAt: row.published_at || row.publishedAt,
+      version: row.version,
     };
-
-    const saved = savePublishedDataToDisk(newPublishedData);
-
-    if (!saved) {
-      return res.status(500).json({
-        success: false,
-        error: 'Failed to write published updates to server disk.',
-      });
-    }
-
-    // Broadcast live update in real-time to all connected browser tabs & visitors
-    broadcastLiveSiteUpdate({
-      type: 'published_update',
-      publishedAt,
-      version: currentVersion,
-      data: newPublishedData,
-    });
-
-    console.log(`[CMS PUBLISH] Live website synchronized successfully at ${publishedAt} (v${currentVersion}) via ${req.originalUrl}`);
 
     res.json({
       success: true,
-      message: 'Website published and synchronized live to all visitors in real-time.',
-      publishedAt,
-      version: currentVersion,
-      activeClientsNotified: sseClientConnections.size,
-      data: newPublishedData,
+      hasCustomData: true,
+      publishedAt: row.published_at || row.publishedAt,
+      version: row.version,
+      data,
     });
   } catch (error: any) {
-    console.error('Error in publish handler:', error);
+    console.error('[SITE DATA]', error);
     res.status(500).json({
       success: false,
-      error: error?.message || 'Server error while publishing website updates',
+      error: 'Unable to load published website data.',
+      details: error?.message,
+    });
+  }
+});
+
+app.get('/api/site/version', async (req, res) => {
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    const row = await getPublishedData();
+    res.json({
+      success: true,
+      version: row.version || 1,
+      publishedAt: row.published_at || row.publishedAt || null,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message });
+  }
+});
+
+// 3. Reusable Canonical Publish Handler
+async function handlePublishRequest(req: express.Request, res: express.Response) {
+  try {
+    if (req.method === 'GET') {
+      const current = await getPublishedData();
+      return res.json({
+        success: true,
+        status: 'ready',
+        version: current.version,
+        publishedAt: current.published_at || current.publishedAt,
+        activeClients: sseClientConnections.size,
+      });
+    }
+
+    const payload = req.body || {};
+    const current = await getPublishedData();
+
+    const mergedSettings = deepMerge(
+      BASELINE_SETTINGS,
+      deepMerge(current.settings || {}, payload.settings || payload.data?.settings || {})
+    );
+
+    const newVersion = Number(current.version || 0) + 1;
+    const publishedAt = new Date().toISOString();
+
+    const published = {
+      settings: mergedSettings,
+      portfolioItems: Array.isArray(payload.portfolioItems || payload.data?.portfolioItems)
+        ? (payload.portfolioItems || payload.data?.portfolioItems)
+        : current.portfolio_items || current.portfolioItems || [],
+      leads: payload.leads || payload.data?.leads || current.leads || [],
+      emailLogs: payload.emailLogs || payload.data?.emailLogs || current.email_logs || current.emailLogs || [],
+      publishedAt,
+      version: newVersion,
+      publishNote: payload.note || payload.data?.note || 'Admin published website changes',
+    };
+
+    await savePublishedData(published);
+
+    broadcastLiveSiteUpdate({
+      type: 'published_update',
+      version: newVersion,
+      publishedAt,
+      data: published,
+    });
+
+    console.log(`[CMS PUBLISH] Synchronized production version ${newVersion} at ${publishedAt}`);
+
+    return res.json({
+      success: true,
+      message: 'Website published successfully.',
+      version: newVersion,
+      publishedAt,
+      data: published,
+    });
+  } catch (error: any) {
+    console.error('[CMS PUBLISH ERROR]', error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to publish website.',
     });
   }
 }
 
-// 4. Publish Live Website Updates - Registered across all common endpoints and aliases
-const PUBLISH_ENDPOINTS = [
-  '/api/admin/publish',
-  '/api/publish',
-  '/api/site/publish',
-  '/api/settings/publish',
-  '/api/admin/save',
-  '/api/publish-live',
-  '/api/publish/live',
-  '/api/live/publish',
-  '/api/live-publish',
-  '/api/sync',
-  '/api/site/sync',
-  '/api/admin/sync',
-  '/api/sync-live',
-  '/api/live-sync',
-  '/api/settings/sync',
-  '/api/admin/save-settings',
-  '/api/save-settings',
-  '/api/settings/save',
-  '/api/cms/publish',
-  '/api/website/publish',
-  '/api/site/data',
-  '/api/site/settings',
-  '/api/settings',
-  '/api/admin/settings',
-];
-
-PUBLISH_ENDPOINTS.forEach((endpoint) => {
-  app.post(endpoint, handlePublishRequest);
-  app.get(endpoint, handlePublishRequest);
-  app.all(endpoint, handlePublishRequest);
-  // Also register with trailing slash
-  app.post(`${endpoint}/`, handlePublishRequest);
-  app.get(`${endpoint}/`, handlePublishRequest);
-  app.all(`${endpoint}/`, handlePublishRequest);
-});
-
-// Explicit top-level route declarations for publish endpoints
-app.post('/api/publish', handlePublishRequest);
-app.get('/api/publish', handlePublishRequest);
-app.post('/api/site/publish', handlePublishRequest);
-app.get('/api/site/publish', handlePublishRequest);
-app.post('/api/admin/publish', handlePublishRequest);
-app.get('/api/admin/publish', handlePublishRequest);
+// Canonical registration for publish endpoints - NO duplicate routes
+app.get(['/api/publish', '/api/site/publish', '/api/admin/publish'], handlePublishRequest);
+app.post(['/api/publish', '/api/site/publish', '/api/admin/publish'], handlePublishRequest);
 app.options(['/api/publish', '/api/site/publish', '/api/admin/publish'], (req, res) => res.sendStatus(204));
 
-// 5. Submit Customer Quote Request / Contact Lead
-const handleLeadSubmit = (req: express.Request, res: express.Response) => {
+// 4. Submit Customer Quote Request / Contact Lead
+const handleLeadSubmit = async (req: express.Request, res: express.Response) => {
   try {
     const leadData = req.body;
     if (!leadData.name && !leadData.fullName) {
@@ -885,24 +1103,24 @@ const handleLeadSubmit = (req: express.Request, res: express.Response) => {
       estimateTotal: leadData.estimateTotal || null,
     };
 
-    // Update in-memory and disk if published data exists
-    if (!inMemoryPublishedData) {
-      loadPublishedDataFromDisk();
-    }
-    if (inMemoryPublishedData) {
-      const updatedLeads = [newLead, ...(inMemoryPublishedData.leads || [])];
-      inMemoryPublishedData.leads = updatedLeads;
-      savePublishedDataToDisk(inMemoryPublishedData);
-    }
+    const published = await getPublishedData();
+    const updatedLeads = [newLead, ...(published.leads || [])];
+    await savePublishedData({
+      settings: published.settings || BASELINE_SETTINGS,
+      portfolioItems: published.portfolio_items || published.portfolioItems || [],
+      leads: updatedLeads,
+      emailLogs: published.email_logs || published.emailLogs || [],
+      version: published.version || 1,
+      publishedAt: published.published_at || published.publishedAt || new Date().toISOString(),
+    });
 
-    // Broadcast lead update to admin portal
     broadcastLiveSiteUpdate({
       type: 'new_lead',
       lead: newLead,
     });
 
-    // Record in Dispatched Email Logs & notify administrator
-    recordDispatchedEmailLog({
+    // Record in Dispatched Email Logs with status queued
+    await recordDispatchedEmailLog({
       to: 'graphicspunching264@gmail.com',
       recipientName: 'Administrator',
       from: 'Website Lead Engine <graphicspunching264@gmail.com>',
@@ -928,7 +1146,7 @@ ${newLead.estimateTotal ? `ESTIMATED TOTAL: $${newLead.estimateTotal}` : ''}
 Graphics Punching Production Desk — 24/7 Intake
 Phone: +1 (607) 205-0030 | graphicspunching264@gmail.com
 ======================================================================`,
-      status: 'delivered',
+      status: 'queued',
     });
 
     res.json({
@@ -942,17 +1160,21 @@ Phone: +1 (607) 205-0030 | graphicspunching264@gmail.com
   }
 };
 
-app.post('/api/leads/submit', handleLeadSubmit);
-app.post('/api/leads', handleLeadSubmit);
-app.post('/api/contact', handleLeadSubmit);
+app.post(['/api/leads/submit', '/api/leads', '/api/contact'], handleLeadSubmit);
 
-// 6. Reset Published Data to Default Factory State
-const handleReset = (req: express.Request, res: express.Response) => {
+// 5. Reset Published Data to Default Factory State
+const handleReset = async (req: express.Request, res: express.Response) => {
   try {
-    if (fs.existsSync(PUBLISHED_DATA_FILE)) {
-      fs.unlinkSync(PUBLISHED_DATA_FILE);
-    }
-    inMemoryPublishedData = null;
+    const initialData = {
+      settings: BASELINE_SETTINGS,
+      portfolioItems: [],
+      leads: [],
+      emailLogs: [],
+      version: 1,
+      publishedAt: new Date().toISOString(),
+      publishNote: 'Reset to factory baseline defaults',
+    };
+    await savePublishedData(initialData);
 
     broadcastLiveSiteUpdate({
       type: 'reset_to_defaults',
@@ -1047,9 +1269,9 @@ Draft: "${currentDraft}"
 Tone: ${tone}`;
     }
 
-    // Call Gemini 3.7 Flash
+    // Call Gemini 3.8 Flash
     const response = await ai.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-3.8-flash',
       contents: userPrompt,
       config: {
         systemInstruction,
@@ -1071,7 +1293,7 @@ Tone: ${tone}`;
     res.json({
       success: true,
       data: parsedResult,
-      modelUsed: 'gemini-3.7-flash',
+      modelUsed: 'gemini-3.8-flash',
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
@@ -1644,16 +1866,28 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         ? recipients.join(', ')
         : 'graphicspunching264@gmail.com';
 
+    // Attempt real email dispatch via nodemailer / Gmail
+    const dispatchResult = await dispatchRealEmail({
+      to: destination,
+      replyTo: (sessionInfo as any)?.visitorEmail || 'graphicspunching264@gmail.com',
+      subject,
+      body: emailBody,
+    });
+
+    const emailStatus = dispatchResult.sent ? 'sent' : dispatchResult.notConfigured ? 'queued' : 'failed';
+
     // Persist email alert to authoritative server-side log store and sync live
-    const loggedAlert = recordDispatchedEmailLog({
+    const loggedAlert = await recordDispatchedEmailLog({
       to: destination,
       recipientName: 'Administrator',
       from: 'Punchy AI <graphicspunching264@gmail.com>',
       replyTo: (sessionInfo as any)?.visitorEmail || 'graphicspunching264@gmail.com',
       subject,
       body: emailBody,
-      status: 'delivered',
+      status: emailStatus,
       trackingId,
+      providerMessageId: dispatchResult.messageId || null,
+      error: dispatchResult.error || null,
       thread: Array.isArray(conversation)
         ? conversation.map((c: any) => ({
             id: c.id || `msg-${Date.now()}`,
@@ -1666,14 +1900,16 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
 
     return res.json({
       success: true,
-      message: 'Admin notification email dispatched successfully',
+      message: dispatchResult.sent
+        ? 'Admin notification email dispatched successfully'
+        : 'Admin notification recorded (SMTP delivery pending/queued)',
       trackingId,
       sentAt: nowIso,
       eventType,
       recipient: destination,
       selectedInquiry: cleanedInquiry,
       subject,
-      deliveryStatus: 'delivered',
+      deliveryStatus: emailStatus,
       details: {
         totalConversationMessages: Array.isArray(conversation) ? conversation.length : 0,
         formattedDateTime,
@@ -1692,7 +1928,7 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
 });
 
 // ============================================================
-// GRAPHICS PUNCHING - CENTRAL CHATBOT MESSAGE STORE
+// GRAPHICS PUNCHING - CENTRAL CHATBOT MESSAGE STORE (SUPABASE + ASYNC)
 // ============================================================
 
 function createChatId() {
@@ -1707,21 +1943,27 @@ function createMessageId() {
     .slice(2, 9)}`;
 }
 
-function getOrCreateConversation(data: any) {
+async function getOrCreateConversation(data: any) {
   const conversationId =
     typeof data.conversationId === 'string' && data.conversationId.trim()
       ? data.conversationId.trim()
-      : createChatId();
+      : null;
 
-  let conversation = inMemoryChatConversations.find(
-    (item: any) =>
-      item.id === conversationId ||
-      (data.visitorId && item.visitorId === data.visitorId)
-  );
+  let conversation: any = null;
+
+  if (conversationId) {
+    conversation = await getConversation(conversationId);
+  }
+
+  if (!conversation && data.visitorId) {
+    const all = await getAllConversations();
+    conversation = all.find((item: any) => item.visitorId === data.visitorId) || null;
+  }
 
   if (!conversation) {
+    const id = conversationId || createChatId();
     conversation = {
-      id: conversationId,
+      id,
       visitorId:
         data.visitorId ||
         `visitor-${Math.random().toString(36).slice(2, 9)}`,
@@ -1731,21 +1973,13 @@ function getOrCreateConversation(data: any) {
       startedAt: new Date().toISOString(),
       lastUpdatedAt: new Date().toISOString(),
       status: 'active',
-
-      // IMPORTANT:
-      // Customer messages increase this count.
       unreadForAdmin: 0,
-
-      // Admin messages increase this count.
       unreadForVisitor: 0,
-
       lastMessage: '',
       lastEventType: '',
       sessionInfo: data.sessionInfo || {},
       messages: [],
     };
-
-    inMemoryChatConversations.unshift(conversation);
   }
 
   return conversation;
@@ -1777,18 +2011,14 @@ function normalizeChatMessage(data: any, conversation: any) {
           : data.visitorName || conversation.visitorName || 'Website Visitor',
 
     content,
-
     type: data.type || 'user_message',
-
     timestamp:
       data.timestamp ||
       new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
       }),
-
     createdAt: new Date().toISOString(),
-
     suggestedAction: data.suggestedAction || undefined,
   };
 }
@@ -1799,7 +2029,7 @@ function normalizeChatMessage(data: any, conversation: any) {
 
 app.post(
   ['/api/chatbot/message', '/api/chat/message'],
-  (req, res) => {
+  async (req, res) => {
     try {
       const {
         conversationId,
@@ -1825,11 +2055,7 @@ app.post(
         });
       }
 
-      if (!Array.isArray(inMemoryChatConversations) || inMemoryChatConversations.length === 0) {
-        loadChatConversationsFromDisk();
-      }
-
-      const conversation = getOrCreateConversation({
+      const conversation = await getOrCreateConversation({
         conversationId,
         visitorId,
         visitorName,
@@ -1867,6 +2093,10 @@ app.post(
         conversation
       );
 
+      if (!Array.isArray(conversation.messages)) {
+        conversation.messages = [];
+      }
+
       // Prevent accidental duplicate messages.
       const duplicate = conversation.messages.some(
         (m: any) =>
@@ -1874,9 +2104,7 @@ app.post(
           (
             m.role === chatMessage.role &&
             m.content === chatMessage.content &&
-            Date.now() -
-              new Date(m.createdAt).getTime() <
-              3000
+            Date.now() - new Date(m.createdAt).getTime() < 3000
           )
       );
 
@@ -1895,17 +2123,11 @@ app.post(
         conversation.status = 'active';
 
         // Auto-sync visitor conversation to customer leads database
-        syncConversationToLead(conversation);
+        await syncConversationToLead(conversation);
 
-        // Auto-record dispatched email alert to admin email log store
+        // Auto-record dispatched email alert to admin email log store & real SMTP
         const chatTrackingId = `GP-CHAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-        recordDispatchedEmailLog({
-          to: 'graphicspunching264@gmail.com',
-          recipientName: 'Administrator',
-          from: 'Punchy AI <graphicspunching264@gmail.com>',
-          replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
-          subject: `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 40)}${chatMessage.content.length > 40 ? '...' : ''}"`,
-          body: `======================================================================
+        const alertEmailBody = `======================================================================
 GRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY
 ======================================================================
 
@@ -1922,9 +2144,28 @@ ${Array.isArray(req.body.attachments) && req.body.attachments.length > 0 ? `ATTA
 
 Graphics Punching 24/7 Production & Live Chat Desk
 graphicspunching264@gmail.com | +1 (607) 205-0030
-======================================================================`,
-          status: 'delivered',
+======================================================================`;
+
+        const dispatchResult = await dispatchRealEmail({
+          to: 'graphicspunching264@gmail.com',
+          replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
+          subject: `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 40)}${chatMessage.content.length > 40 ? '...' : ''}"`,
+          body: alertEmailBody,
+        });
+
+        const alertStatus = dispatchResult.sent ? 'sent' : dispatchResult.notConfigured ? 'queued' : 'failed';
+
+        await recordDispatchedEmailLog({
+          to: 'graphicspunching264@gmail.com',
+          recipientName: 'Administrator',
+          from: 'Punchy AI <graphicspunching264@gmail.com>',
+          replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
+          subject: `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 40)}${chatMessage.content.length > 40 ? '...' : ''}"`,
+          body: alertEmailBody,
+          status: alertStatus,
           trackingId: chatTrackingId,
+          providerMessageId: dispatchResult.messageId || null,
+          error: dispatchResult.error || null,
         });
       }
 
@@ -1934,25 +2175,17 @@ graphicspunching264@gmail.com | +1 (607) 205-0030
           Number(conversation.unreadForVisitor || 0) + 1;
       }
 
-      // Keep newest conversations first.
-      inMemoryChatConversations.sort(
-        (a: any, b: any) =>
-          new Date(b.lastUpdatedAt).getTime() -
-          new Date(a.lastUpdatedAt).getTime()
-      );
-
-      const saved = saveChatConversationsToDisk(
-        inMemoryChatConversations
-      );
+      const saved = await saveConversation(conversation);
 
       if (!saved) {
         return res.status(500).json({
           success: false,
-          error: 'Unable to save chatbot conversation.',
+          error: 'Unable to save chatbot conversation to database.',
         });
       }
 
-      const totalUnread = inMemoryChatConversations.reduce(
+      const allConvs = await getAllConversations();
+      const totalUnread = allConvs.reduce(
         (total: number, item: any) =>
           total + Number(item.unreadForAdmin || 0),
         0
@@ -2002,46 +2235,31 @@ graphicspunching264@gmail.com | +1 (607) 205-0030
 
 app.get(
   ['/api/chatbot/conversations', '/api/chat/conversations'],
-  (req, res) => {
+  async (req, res) => {
     try {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      if (
-        !Array.isArray(inMemoryChatConversations) ||
-        inMemoryChatConversations.length === 0
-      ) {
-        loadChatConversationsFromDisk();
-      }
-
-      inMemoryChatConversations.sort(
-        (a: any, b: any) =>
-          new Date(b.lastUpdatedAt).getTime() -
-          new Date(a.lastUpdatedAt).getTime()
-      );
+      const conversations = await getAllConversations();
 
       const totalUnread =
-        inMemoryChatConversations.reduce(
+        conversations.reduce(
           (total: number, conversation: any) =>
-            total +
-            Number(
-              conversation.unreadForAdmin || 0
-            ),
+            total + Number(conversation.unreadForAdmin || 0),
           0
         );
 
       return res.json({
         success: true,
-        conversations: inMemoryChatConversations,
+        conversations,
         totalUnread,
         activeCount:
-          inMemoryChatConversations.filter(
-            (c: any) =>
-              c.status !== 'archived'
+          conversations.filter(
+            (c: any) => c.status !== 'archived'
           ).length,
         totalRecorded:
-          inMemoryChatConversations.length,
+          conversations.length,
         serverTime:
           new Date().toISOString(),
       });
@@ -2067,18 +2285,11 @@ app.get(
     '/api/chat/conversation',
     '/api/chat/conversation/:id',
   ],
-  (req, res) => {
+  async (req, res) => {
     try {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
-
-      if (
-        !Array.isArray(inMemoryChatConversations) ||
-        inMemoryChatConversations.length === 0
-      ) {
-        loadChatConversationsFromDisk();
-      }
 
       const conversationId =
         String(
@@ -2092,14 +2303,16 @@ app.get(
           req.query.visitorId || ''
         ).trim();
 
-      const conversation =
-        inMemoryChatConversations.find(
-          (item: any) =>
-            (conversationId &&
-              item.id === conversationId) ||
-            (visitorId &&
-              item.visitorId === visitorId)
-        ) || null;
+      let conversation: any = null;
+
+      if (conversationId) {
+        conversation = await getConversation(conversationId);
+      }
+
+      if (!conversation && visitorId) {
+        const all = await getAllConversations();
+        conversation = all.find((item: any) => item.visitorId === visitorId) || null;
+      }
 
       return res.json({
         success: true,
@@ -2127,7 +2340,7 @@ app.post(
     '/api/chat/admin-reply',
     '/api/chat/reply',
   ],
-  (req, res) => {
+  async (req, res) => {
     try {
       const {
         conversationId,
@@ -2157,18 +2370,7 @@ app.post(
         });
       }
 
-      if (
-        !Array.isArray(inMemoryChatConversations) ||
-        inMemoryChatConversations.length === 0
-      ) {
-        loadChatConversationsFromDisk();
-      }
-
-      const conversation =
-        inMemoryChatConversations.find(
-          (item: any) =>
-            item.id === conversationId
-        );
+      const conversation = await getConversation(conversationId);
 
       if (!conversation) {
         return res.status(404).json({
@@ -2193,45 +2395,43 @@ app.post(
           new Date().toISOString(),
       };
 
-      conversation.messages.push(
-        adminMessage
-      );
+      if (!Array.isArray(conversation.messages)) {
+        conversation.messages = [];
+      }
 
+      conversation.messages.push(adminMessage);
       conversation.lastMessage = `[Admin] ${replyText}`;
-      conversation.lastUpdatedAt =
-        new Date().toISOString();
-      conversation.lastEventType =
-        'admin_reply';
+      conversation.lastUpdatedAt = new Date().toISOString();
+      conversation.lastEventType = 'admin_reply';
       conversation.unreadForVisitor =
-        Number(
-          conversation.unreadForVisitor || 0
-        ) + 1;
+        Number(conversation.unreadForVisitor || 0) + 1;
 
       // Admin has now handled the unread customer messages.
       conversation.unreadForAdmin = 0;
 
-      // Keep newest conversations first.
-      inMemoryChatConversations.sort(
-        (a: any, b: any) =>
-          new Date(b.lastUpdatedAt).getTime() -
-          new Date(a.lastUpdatedAt).getTime()
-      );
+      await saveConversation(conversation);
 
-      saveChatConversationsToDisk(
-        inMemoryChatConversations
+      const allConvs = await getAllConversations();
+      const totalUnread = allConvs.reduce(
+        (total: number, item: any) =>
+          total + Number(item.unreadForAdmin || 0),
+        0
       );
 
       broadcastLiveSiteUpdate({
         type: 'chatbot_admin_reply',
-        conversationId:
-          conversation.id,
-        visitorId:
-          conversation.visitorId,
+        conversationId: conversation.id,
+        visitorId: conversation.visitorId,
         conversation,
         message: adminMessage,
         adminMessage,
-        timestamp:
-          new Date().toISOString(),
+        timestamp: new Date().toISOString(),
+      });
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_unread_update',
+        conversationId: conversation.id,
+        totalUnread,
       });
 
       return res.json({
@@ -2268,10 +2468,9 @@ app.post(
     '/api/chat/mark-read',
     '/api/chat/read',
   ],
-  (req, res) => {
+  async (req, res) => {
     try {
-      const { conversationId } =
-        req.body || {};
+      const { conversationId } = req.body || {};
 
       if (!conversationId) {
         return res.status(400).json({
@@ -2280,43 +2479,21 @@ app.post(
         });
       }
 
-      if (
-        !Array.isArray(inMemoryChatConversations) ||
-        inMemoryChatConversations.length === 0
-      ) {
-        loadChatConversationsFromDisk();
-      }
+      const ok = await markConversationAsRead(conversationId);
 
-      const conversation =
-        inMemoryChatConversations.find(
-          (item: any) =>
-            item.id === conversationId
-        );
-
-      if (!conversation) {
+      if (!ok) {
         return res.status(404).json({
           success: false,
           error: 'Conversation not found.',
         });
       }
 
-      conversation.unreadForAdmin = 0;
-      conversation.lastUpdatedAt =
-        new Date().toISOString();
-
-      saveChatConversationsToDisk(
-        inMemoryChatConversations
+      const allConvs = await getAllConversations();
+      const totalUnread = allConvs.reduce(
+        (total: number, item: any) =>
+          total + Number(item.unreadForAdmin || 0),
+        0
       );
-
-      const totalUnread =
-        inMemoryChatConversations.reduce(
-          (total: number, item: any) =>
-            total +
-            Number(
-              item.unreadForAdmin || 0
-            ),
-          0
-        );
 
       broadcastLiveSiteUpdate({
         type: 'chatbot_unread_update',
@@ -2347,27 +2524,17 @@ app.post(
     '/api/chat/clear-or-archive',
     '/api/chat/archive',
   ],
-  (req, res) => {
+  async (req, res) => {
     try {
       const { conversationId, action = 'archive' } = req.body || {};
       if (!conversationId) {
         return res.status(400).json({ success: false, error: 'conversationId is required.' });
       }
 
-      if (!Array.isArray(inMemoryChatConversations) || inMemoryChatConversations.length === 0) {
-        loadChatConversationsFromDisk();
-      }
+      await archiveOrDeleteConversation(conversationId, action);
 
-      if (action === 'delete') {
-        inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== conversationId);
-      } else {
-        const conv = inMemoryChatConversations.find((c) => c.id === conversationId);
-        if (conv) conv.status = 'archived';
-      }
-
-      saveChatConversationsToDisk(inMemoryChatConversations);
-
-      const totalUnread = inMemoryChatConversations.reduce(
+      const allConvs = await getAllConversations();
+      const totalUnread = allConvs.reduce(
         (acc: number, c: any) => acc + (c.unreadForAdmin || 0),
         0
       );
@@ -2389,7 +2556,7 @@ app.post(
   }
 );
 
-// 8. Email Dispatch Endpoint (Connected Gmail / Mail Service Integration)
+// 8. Email Dispatch Endpoint (Real SMTP Delivery with Database Persistence)
 app.post('/api/email/send', async (req, res) => {
   try {
     const {
@@ -2432,8 +2599,22 @@ app.post('/api/email/send', async (req, res) => {
       type: att.type || 'application/octet-stream',
     }));
 
-    // Authoritatively persist email to published data store and disk
-    const savedLog = recordDispatchedEmailLog({
+    // Perform real email dispatch via nodemailer transport
+    const dispatchResult = await dispatchRealEmail({
+      to: to.trim(),
+      from,
+      replyTo: replyTo || from,
+      subject,
+      body,
+      attachments,
+      cc,
+      bcc,
+    });
+
+    const emailStatus = dispatchResult.sent ? 'sent' : dispatchResult.notConfigured ? 'queued' : 'failed';
+
+    // Authoritatively persist email to database and trigger real-time SSE broadcast
+    const savedLog = await recordDispatchedEmailLog({
       to: to.trim(),
       recipientName: to.trim().split('@')[0],
       from,
@@ -2441,17 +2622,27 @@ app.post('/api/email/send', async (req, res) => {
       subject,
       body,
       attachments: attachmentSummary,
-      status: 'delivered',
+      status: emailStatus,
       trackingId,
+      providerMessageId: dispatchResult.messageId || null,
+      error: dispatchResult.error || null,
     });
 
     res.json({
       success: true,
-      message: 'Email dispatched successfully via connected account',
+      message: dispatchResult.sent
+        ? 'Email dispatched successfully via connected mail transport'
+        : 'Email recorded in transmission ledger (SMTP delivery queued)',
       trackingId,
       sentAt,
-      deliveryStatus: 'delivered',
+      deliveryStatus: emailStatus,
       emailLog: savedLog,
+      dispatchResult: {
+        sent: dispatchResult.sent,
+        messageId: dispatchResult.messageId,
+        notConfigured: dispatchResult.notConfigured,
+        error: dispatchResult.error,
+      },
       details: {
         to: to.trim(),
         from,
@@ -2461,7 +2652,7 @@ app.post('/api/email/send', async (req, res) => {
         attachments: attachmentSummary,
         cc: cc || null,
         bcc: bcc || null,
-        serverProvider: 'Connected Google Workspace / Gmail Gateway (graphicspunching264@gmail.com)',
+        serverProvider: dispatchResult.sent ? 'Active SMTP/Gmail Gateway' : 'Ledger Queue Mode',
       },
     });
   } catch (error: any) {
@@ -2475,11 +2666,16 @@ app.post('/api/email/send', async (req, res) => {
 
 // 9. Email Connection Verification Endpoint
 app.get('/api/email/status', (req, res) => {
+  const isSmtpConfigured = !!(
+    (process.env.SMTP_USER && process.env.SMTP_PASS) ||
+    (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD)
+  );
+
   res.json({
     success: true,
-    connectedEmail: 'graphicspunching264@gmail.com',
-    status: 'connected',
-    provider: 'Connected Google Workspace / Gmail Gateway',
+    connectedEmail: process.env.SMTP_USER || process.env.GMAIL_USER || 'graphicspunching264@gmail.com',
+    status: isSmtpConfigured ? 'connected' : 'queued_mode',
+    provider: isSmtpConfigured ? 'Authenticated SMTP / Gmail Transport' : 'Database Queue Ledger (Configure SMTP_PASS for live delivery)',
     activeServices: [
       'Contact Form Submissions',
       'Instant Quote Requests (FormSubmit AJAX)',
@@ -2487,14 +2683,6 @@ app.get('/api/email/status', (req, res) => {
       'Production Email Dispatch & Auto-Responder',
     ],
     timestamp: new Date().toISOString(),
-  });
-});
-
-// Fallback for any unmatched /api routes to prevent HTML 404 responses
-app.all('/api/*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: `API route ${req.method} ${req.path} not found on this server.`,
   });
 });
 

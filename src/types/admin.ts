@@ -168,6 +168,8 @@ export interface EmailLog {
   attachments: EmailAttachment[];
   status: 'sent' | 'delivered' | 'draft' | 'failed' | 'queued';
   sentAt: string;
+  providerMessageId?: string;
+  error?: string;
   errorMessage?: string;
   isStarred?: boolean;
   thread?: Array<{
