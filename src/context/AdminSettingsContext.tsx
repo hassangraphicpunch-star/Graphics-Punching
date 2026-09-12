@@ -92,7 +92,7 @@ const DEFAULT_SOCIAL: SocialLinksSettings = {
 };
 
 const DEFAULT_CHATBOT: ChatbotSettings = {
-  enabled: true,
+  enabled: false,
   botName: 'Punchy AI',
   botRole: 'Graphics Punching Virtual Assistant',
   welcomeMessage: 'Hi there! 👋 Welcome to Graphics Punching. How can I help with your embroidery digitizing, vector redraw, custom patches, or screen printing project today?',

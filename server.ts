@@ -175,7 +175,7 @@ const BASELINE_SETTINGS = {
     quickLinksTitle: 'Quick Directory',
   },
   chatbot: {
-    enabled: true,
+    enabled: false,
     botName: 'Punchy AI',
     botRole: 'Graphics Punching Virtual Assistant',
     welcomeMessage: 'Hello! I am Punchy AI, your 24/7 artwork and digitizing specialist. How can we elevate your apparel decoration today?',
