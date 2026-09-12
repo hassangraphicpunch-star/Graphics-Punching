@@ -110,6 +110,19 @@
   "portfolioItems": [],
   "leads": [
     {
+      "id": "lead-chat-test-solve-conv-1",
+      "name": "Visitor Test",
+      "email": "",
+      "phone": "",
+      "company": "",
+      "serviceInterested": "Embroidery Digitizing / Vector Art",
+      "projectDetails": "Inquiry via 24/7 AI Chatbot: \"What is the standard turnaround time for left chest digitizing?\"",
+      "date": "2026-09-12T20:40:05.886Z",
+      "status": "new",
+      "source": "AI Chatbot (test-solve-vis-1)",
+      "estimateTotal": null
+    },
+    {
       "id": "lead-chat-conv-mtys2wg8-c4c7bzj",
       "name": "John Smith",
       "email": "john.smith@example.com",
@@ -125,6 +138,22 @@
   ],
   "emailLogs": [
     {
+      "id": "log-1789245607323-p2mf",
+      "trackingId": "GP-CHAT-MTYUMXA7-JJ6",
+      "to": "graphicspunching264@gmail.com",
+      "recipientName": "Administrator",
+      "from": "Punchy AI <graphicspunching264@gmail.com>",
+      "replyTo": "graphicspunching264@gmail.com",
+      "subject": "[Live Chat] Visitor Test: \"What is the standard turnaround time for...\"",
+      "body": "======================================================================\nGRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY\n======================================================================\n\nVISITOR: Visitor Test\nEMAIL: None provided\nPHONE: None provided\nCONVERSATION ID: test-solve-conv-1\nMESSAGE TIME: 2026-09-12T20:40:05.886Z\n\nMESSAGE:\n\"What is the standard turnaround time for left chest digitizing?\"\n\n\n\nGraphics Punching 24/7 Production & Live Chat Desk\ngraphicspunching264@gmail.com | +1 (607) 205-0030\n======================================================================",
+      "attachments": [],
+      "status": "failed",
+      "sentAt": "2026-09-12T20:40:07.323Z",
+      "providerMessageId": null,
+      "error": "Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to\n535 5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-39d98e602d8sm11770427a91.3 - gsmtp",
+      "thread": []
+    },
+    {
       "id": "log-1789241312458-1tr0",
       "trackingId": "GP-CHAT-MTYS2WG9-OLY",
       "to": "graphicspunching264@gmail.com",
@@ -139,7 +168,7 @@
       "thread": []
     }
   ],
-  "publishedAt": "2026-09-12T19:28:29.641Z",
-  "version": 31,
-  "publishNote": "Site publish test"
+  "version": 32,
+  "publishedAt": "2026-09-12T20:40:33.605Z",
+  "publishNote": "Admin published website changes"
 }

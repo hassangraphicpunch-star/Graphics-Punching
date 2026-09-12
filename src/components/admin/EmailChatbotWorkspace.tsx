@@ -336,7 +336,11 @@ export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
       const result = await response.json();
 
       if (result.success) {
-        // Log to Admin Settings Context History
+        // Determine authentic delivery status from server dispatch result
+        const serverStatus = result.deliveryStatus || 
+          (result.dispatchResult?.sent ? 'delivered' : result.dispatchResult?.notConfigured ? 'queued' : 'failed');
+
+        // Register with authentic server-provided status
         const createdLog = addEmailLog({
           to: to.trim(),
           recipientName: recipientName || to.trim(),
@@ -345,15 +349,21 @@ export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
           subject: subject.trim(),
           body: body.trim(),
           attachments: attachments,
-          status: 'delivered',
+          status: serverStatus,
         });
 
-        // Trigger Success Toast
+        // Trigger Toast with authentic feedback
         setSendSuccessToast({
           show: true,
           trackingId: result.trackingId || createdLog.trackingId,
           recipient: to.trim(),
         });
+
+        if (!result.dispatchResult?.sent && result.dispatchResult?.error) {
+          setErrorMessage(`Notice: Email recorded in ledger (${serverStatus}). Gateway reported: ${result.dispatchResult.error}`);
+        } else {
+          setErrorMessage('');
+        }
 
         // Reset composer but keep chat log
         setTo('');
@@ -363,7 +373,7 @@ export const EmailChatbotWorkspace: React.FC<EmailChatbotWorkspaceProps> = ({
         setAttachments([]);
         setTimeout(() => {
           setSendSuccessToast({ show: false, trackingId: '', recipient: '' });
-        }, 5000);
+        }, 6000);
       } else {
         throw new Error(result.error || 'Failed to dispatch email');
       }

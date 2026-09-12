@@ -281,6 +281,53 @@ const BASELINE_SETTINGS = {
 // DATABASE-BACKED STORAGE HELPERS (PERSISTENT & SERVERLESS-READY)
 // ============================================================
 
+const DATA_DIR = path.join(process.cwd(), 'data');
+const PUBLISHED_DATA_FILE = path.join(DATA_DIR, 'published_site_data.json');
+const CHAT_CONVERSATIONS_FILE = path.join(DATA_DIR, 'chat_conversations.json');
+
+// Initialize local disk cache for instant availability
+function initStorageFromDisk() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(PUBLISHED_DATA_FILE)) {
+      const raw = fs.readFileSync(PUBLISHED_DATA_FILE, 'utf-8');
+      if (raw && raw.trim()) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          inMemoryPublishedData = {
+            id: 'production',
+            settings: parsed.settings || BASELINE_SETTINGS,
+            portfolioItems: parsed.portfolioItems || parsed.portfolio_items || [],
+            leads: parsed.leads || [],
+            emailLogs: parsed.emailLogs || parsed.email_logs || [],
+            version: parsed.version || 1,
+            publishedAt: parsed.publishedAt || parsed.published_at || new Date().toISOString(),
+            publishNote: parsed.publishNote || parsed.publish_note || '',
+          };
+          console.log(`[STORAGE] Loaded published site data (v${inMemoryPublishedData.version}) from disk.`);
+        }
+      }
+    }
+    if (fs.existsSync(CHAT_CONVERSATIONS_FILE)) {
+      const raw = fs.readFileSync(CHAT_CONVERSATIONS_FILE, 'utf-8');
+      if (raw && raw.trim()) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          inMemoryChatConversations = parsed;
+          console.log(`[STORAGE] Loaded ${inMemoryChatConversations.length} chat conversations from disk.`);
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn('[STORAGE] Initial disk read warning:', err?.message);
+  }
+}
+
+// Pre-seed memory from disk cache on launch
+initStorageFromDisk();
+
 async function getPublishedData() {
   if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     try {
@@ -331,11 +378,15 @@ async function getPublishedData() {
       };
       return row;
     } catch (err: any) {
-      console.warn('[STORAGE] Supabase getPublishedData failed, using in-memory state:', err?.message || err);
+      console.warn('[STORAGE] Supabase getPublishedData failed, using local/in-memory state:', err?.message || err);
     }
   }
 
-  // In-memory fallback
+  // Local / In-memory fallback
+  if (!inMemoryPublishedData) {
+    initStorageFromDisk();
+  }
+
   if (!inMemoryPublishedData) {
     inMemoryPublishedData = {
       id: 'production',
@@ -372,6 +423,16 @@ async function savePublishedData(data: any) {
     publishNote: data.publishNote || data.publish_note || '',
   };
 
+  // Persist to local disk cache
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(PUBLISHED_DATA_FILE, JSON.stringify(inMemoryPublishedData, null, 2), 'utf-8');
+  } catch (diskErr: any) {
+    console.warn('[STORAGE] Local disk save warning:', diskErr?.message);
+  }
+
   if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const rows = await supabaseRequest('site_state', {
@@ -390,7 +451,7 @@ async function savePublishedData(data: any) {
       });
       return rows?.[0] || inMemoryPublishedData;
     } catch (err: any) {
-      console.warn('[STORAGE] Supabase savePublishedData failed, state saved in memory:', err?.message || err);
+      console.warn('[STORAGE] Supabase savePublishedData failed, state saved locally:', err?.message || err);
     }
   }
 
@@ -464,10 +525,23 @@ async function saveConversation(conversation: any) {
         body: payload,
         prefer: 'resolution=merge-duplicates,return=representation',
       });
+      // Also sync to local disk
+      try {
+        if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+      } catch {}
       return rows?.[0] || conversation;
     } catch (err: any) {
       console.warn('[STORAGE] Supabase saveConversation error, saved in memory:', err?.message);
     }
+  }
+
+  // Persist to local disk
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+  } catch (diskErr: any) {
+    console.warn('[STORAGE] Local disk save chat error:', diskErr?.message);
   }
 
   return conversation;
@@ -500,8 +574,12 @@ async function getAllConversations() {
         return mapped;
       }
     } catch (err: any) {
-      console.warn('[STORAGE] Supabase getAllConversations error, fallback to memory:', err?.message);
+      console.warn('[STORAGE] Supabase getAllConversations error, fallback to local cache:', err?.message);
     }
+  }
+
+  if (!inMemoryChatConversations || inMemoryChatConversations.length === 0) {
+    initStorageFromDisk();
   }
 
   inMemoryChatConversations.sort(
@@ -520,6 +598,11 @@ async function markConversationAsRead(id: string): Promise<boolean> {
     conv.lastUpdatedAt = new Date().toISOString();
     found = true;
   }
+
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+  } catch {}
 
   if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
     try {
@@ -543,6 +626,11 @@ async function markConversationAsRead(id: string): Promise<boolean> {
 async function archiveOrDeleteConversation(id: string, action: 'archive' | 'delete') {
   if (action === 'delete') {
     inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== id);
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+    } catch {}
+
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       try {
         await supabaseRequest('chat_conversations', {
@@ -559,6 +647,11 @@ async function archiveOrDeleteConversation(id: string, action: 'archive' | 'dele
       conv.status = 'archived';
       conv.lastUpdatedAt = new Date().toISOString();
     }
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+    } catch {}
+
     if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
       try {
         await supabaseRequest('chat_conversations', {

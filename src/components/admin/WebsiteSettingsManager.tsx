@@ -195,19 +195,11 @@ export const WebsiteSettingsManager: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        if (addEmailLog) {
-          addEmailLog({
-            to: targetEmail,
-            recipientName: 'Administrator',
-            from: settings.emailSettings?.connectedEmail || 'graphicspunching264@gmail.com',
-            replyTo: settings.contact?.email || 'graphicspunching264@gmail.com',
-            subject: `[Test Notification Alert] Chatbot Inquiry Pipeline Verified`,
-            body: `Test notification sent successfully to ${targetEmail}.\nTracking ID: ${data.trackingId}\nStatus: Delivered.`,
-            attachments: [],
-            status: 'delivered',
-          });
-        }
-        triggerSaveNotification(`Test alert email dispatched to ${targetEmail}!`);
+        const isLiveDelivered = data.deliveryStatus === 'sent' || data.deliveryStatus === 'delivered';
+        const statusMsg = isLiveDelivered 
+          ? `Test alert email dispatched to ${targetEmail}!`
+          : `Test alert recorded (${data.deliveryStatus || 'queued'}). Note: Verify SMTP credentials for live sending.`;
+        triggerSaveNotification(statusMsg);
       } else {
         throw new Error(data.error || 'Failed to dispatch test notification');
       }

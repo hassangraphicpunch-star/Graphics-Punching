@@ -372,22 +372,6 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
           sessionInfo,
         }),
       }).catch((err) => console.warn('Background admin email notification failed:', err));
-
-      // 2. Also register in local dispatch history in AdminSettingsContext
-      if (addEmailLog) {
-        addEmailLog({
-          to: adminTarget,
-          recipientName: 'Administrator',
-          from: settings.emailSettings?.connectedEmail || 'graphicspunching264@gmail.com',
-          replyTo: settings.contact?.email || 'graphicspunching264@gmail.com',
-          subject: `[Chatbot Inquiry] ${selectedInquiry.slice(0, 60)}`,
-          body: `EVENT TYPE: ${eventType.toUpperCase()}\nSELECTED INQUIRY / ACTION: "${selectedInquiry}"\nDATE & TIME: ${formattedDateTime}\n\nCONVERSATION DETAILS (${activeConversation.length} messages):\n${activeConversation
-            .map((m) => `[${m.timestamp}] ${m.role.toUpperCase()}: ${m.content}`)
-            .join('\n')}`,
-          attachments: [],
-          status: 'delivered',
-        });
-      }
     } catch (err) {
       console.warn('Error recording admin email notification:', err);
     }
