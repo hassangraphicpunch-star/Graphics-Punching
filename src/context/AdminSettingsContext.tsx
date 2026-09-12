@@ -743,6 +743,13 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
               }, 300);
             } else if (packet.type === 'new_lead' && packet.lead) {
               setLeads((prev) => [packet.lead, ...prev.filter((l) => l.id !== packet.lead.id)]);
+            } else if (packet.type === 'new_email_log' && packet.emailLog) {
+              setEmailLogs((prev) => [
+                packet.emailLog,
+                ...prev.filter(
+                  (e) => e.id !== packet.emailLog.id && e.trackingId !== packet.emailLog.trackingId
+                ),
+              ]);
             } else if (packet.type === 'reset_to_defaults') {
               syncFromServer();
             }

@@ -1,5 +1,31 @@
 [
   {
+    "id": "conv-mtys2wg8-c4c7bzj",
+    "visitorId": "visitor-oynhwpa",
+    "visitorName": "John Smith",
+    "visitorEmail": "john.smith@example.com",
+    "visitorPhone": "+1-555-0199",
+    "startedAt": "2026-09-12T19:28:32.456Z",
+    "lastUpdatedAt": "2026-09-12T19:28:32.457Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Hi, I need a left-chest embroidery digitizing quote for 50 polo shirts.",
+    "lastEventType": "user_message",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-mtys2wg9-ch8774y",
+        "role": "user",
+        "senderName": "John Smith",
+        "content": "Hi, I need a left-chest embroidery digitizing quote for 50 polo shirts.",
+        "type": "user_message",
+        "timestamp": "07:28 PM",
+        "createdAt": "2026-09-12T19:28:32.457Z"
+      }
+    ]
+  },
+  {
     "id": "conv-e2e-visitor-a",
     "visitorId": "visitor-e2e-a",
     "visitorName": "E2E Visitor A (Alice)",

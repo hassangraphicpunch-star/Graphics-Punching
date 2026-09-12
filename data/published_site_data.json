@@ -108,9 +108,38 @@
     }
   },
   "portfolioItems": [],
-  "leads": [],
-  "emailLogs": [],
-  "publishedAt": "2026-09-11T19:48:29.237Z",
-  "version": 27,
-  "publishNote": "E2E verification publish"
+  "leads": [
+    {
+      "id": "lead-chat-conv-mtys2wg8-c4c7bzj",
+      "name": "John Smith",
+      "email": "john.smith@example.com",
+      "phone": "+1-555-0199",
+      "company": "",
+      "serviceInterested": "Embroidery Digitizing / Vector Art",
+      "projectDetails": "Inquiry via 24/7 AI Chatbot: \"Hi, I need a left-chest embroidery digitizing quote for 50 polo shirts.\"",
+      "date": "2026-09-12T19:28:32.457Z",
+      "status": "new",
+      "source": "AI Chatbot (visitor-oynhwpa)",
+      "estimateTotal": null
+    }
+  ],
+  "emailLogs": [
+    {
+      "id": "log-1789241312458-1tr0",
+      "trackingId": "GP-CHAT-MTYS2WG9-OLY",
+      "to": "graphicspunching264@gmail.com",
+      "recipientName": "Administrator",
+      "from": "Punchy AI <graphicspunching264@gmail.com>",
+      "replyTo": "john.smith@example.com",
+      "subject": "[Live Chat] John Smith: \"Hi, I need a left-chest embroidery digit...\"",
+      "body": "======================================================================\nGRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY\n======================================================================\n\nVISITOR: John Smith\nEMAIL: john.smith@example.com\nPHONE: +1-555-0199\nCONVERSATION ID: conv-mtys2wg8-c4c7bzj\nMESSAGE TIME: 2026-09-12T19:28:32.457Z\n\nMESSAGE:\n\"Hi, I need a left-chest embroidery digitizing quote for 50 polo shirts.\"\n\n\n\nGraphics Punching 24/7 Production & Live Chat Desk\ngraphicspunching264@gmail.com | +1 (607) 205-0030\n======================================================================",
+      "attachments": [],
+      "status": "delivered",
+      "sentAt": "2026-09-12T19:28:32.458Z",
+      "thread": []
+    }
+  ],
+  "publishedAt": "2026-09-12T19:28:29.641Z",
+  "version": 31,
+  "publishNote": "Site publish test"
 }

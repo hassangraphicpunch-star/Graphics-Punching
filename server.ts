@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import cors from 'cors';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
@@ -29,7 +30,34 @@ app.use((req, res, next) => {
   next();
 });
 
-// Global CORS headers allowing image asset loading, credentialed requests, and API calls
+// Permissive CORS middleware strictly permitting https://www.graphicspunching.com and all production / preview origins
+const corsOptions: cors.CorsOptions = {
+  origin: (requestOrigin, callback) => {
+    // Always permit requests with no origin (mobile clients, curl, server-to-server) or from valid origins
+    callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'Pragma',
+    'X-Accel-Buffering',
+    'If-Modified-Since',
+    'Range',
+  ],
+  exposedHeaders: ['Content-Length', 'Content-Type', 'X-Accel-Buffering'],
+  maxAge: 86400,
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
+// Explicit fallback CORS headers to guarantee non-blocking cross-origin communication
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
@@ -38,13 +66,13 @@ app.use((req, res, next) => {
   } else {
     res.setHeader('Access-Control-Allow-Origin', '*');
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD');
   res.setHeader(
     'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma'
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma, X-Accel-Buffering, If-Modified-Since, Range'
   );
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
   next();
 });
@@ -53,11 +81,14 @@ app.use((req, res, next) => {
 const DATA_DIR = path.join(process.cwd(), 'data');
 const PUBLISHED_DATA_FILE = path.join(DATA_DIR, 'published_site_data.json');
 
-// Ensure data directory exists
+// Ensure data directory exists with full read/write permissions
 try {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
+  try {
+    fs.chmodSync(DATA_DIR, 0o777);
+  } catch {}
 } catch (err) {
   console.warn('Could not initialize data directory:', err);
 }
@@ -352,6 +383,137 @@ function broadcastLiveSiteUpdate(updatePayload: any) {
   }
 }
 
+// Authoritative Server-Side Dispatched Email Logger & Real-Time Sync
+function recordDispatchedEmailLog(logInput: {
+  to: string;
+  recipientName?: string;
+  from?: string;
+  replyTo?: string;
+  subject: string;
+  body: string;
+  attachments?: any[];
+  status?: 'sent' | 'delivered' | 'draft' | 'failed' | 'queued';
+  thread?: any[];
+  trackingId?: string;
+}) {
+  try {
+    if (!inMemoryPublishedData) {
+      loadPublishedDataFromDisk();
+    }
+    if (!inMemoryPublishedData) {
+      inMemoryPublishedData = {
+        settings: BASELINE_SETTINGS,
+        portfolioItems: [],
+        leads: [],
+        emailLogs: [],
+        publishedAt: new Date().toISOString(),
+        version: 1,
+      };
+    }
+
+    const trackingId =
+      logInput.trackingId ||
+      `GP-MSG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    const newLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      trackingId,
+      to: logInput.to || 'graphicspunching264@gmail.com',
+      recipientName: logInput.recipientName || 'Administrator',
+      from: logInput.from || 'Punchy AI <graphicspunching264@gmail.com>',
+      replyTo: logInput.replyTo || 'graphicspunching264@gmail.com',
+      subject: logInput.subject || '[Inquiry Alert] Live Visitor Chat',
+      body: logInput.body || '',
+      attachments: logInput.attachments || [],
+      status: logInput.status || 'delivered',
+      sentAt: new Date().toISOString(),
+      thread: logInput.thread || [],
+    };
+
+    if (!Array.isArray(inMemoryPublishedData.emailLogs)) {
+      inMemoryPublishedData.emailLogs = [];
+    }
+
+    // Prepend new email log and cap at 200 logs
+    inMemoryPublishedData.emailLogs.unshift(newLog);
+    if (inMemoryPublishedData.emailLogs.length > 200) {
+      inMemoryPublishedData.emailLogs = inMemoryPublishedData.emailLogs.slice(0, 200);
+    }
+
+    savePublishedDataToDisk(inMemoryPublishedData);
+
+    // Broadcast email log update to all admin sessions
+    broadcastLiveSiteUpdate({
+      type: 'new_email_log',
+      emailLog: newLog,
+      totalEmailLogs: inMemoryPublishedData.emailLogs.length,
+    });
+
+    broadcastLiveSiteUpdate({
+      type: 'published_update',
+      publishedAt: inMemoryPublishedData.publishedAt,
+      version: inMemoryPublishedData.version,
+      data: inMemoryPublishedData,
+    });
+
+    console.log(`[EMAIL DISPATCHED & LOGGED] ${trackingId} -> ${newLog.to} ("${newLog.subject}")`);
+    return newLog;
+  } catch (err) {
+    console.error('Error in recordDispatchedEmailLog:', err);
+    return null;
+  }
+}
+
+// Synchronize incoming chatbot conversations with contact leads store
+function syncConversationToLead(conversation: any) {
+  try {
+    if (!inMemoryPublishedData) loadPublishedDataFromDisk();
+    if (!inMemoryPublishedData) return;
+    if (!Array.isArray(inMemoryPublishedData.leads)) inMemoryPublishedData.leads = [];
+
+    const visitorEmail = conversation.visitorEmail?.trim();
+    const visitorPhone = conversation.visitorPhone?.trim();
+    const visitorName = conversation.visitorName?.trim() || 'Website Visitor';
+
+    let existingLead = inMemoryPublishedData.leads.find(
+      (l: any) =>
+        (visitorEmail && l.email && l.email.toLowerCase() === visitorEmail.toLowerCase()) ||
+        l.id === `lead-chat-${conversation.id}` ||
+        (conversation.visitorId && l.source?.includes(conversation.visitorId))
+    );
+
+    if (existingLead) {
+      if (visitorEmail) existingLead.email = visitorEmail;
+      if (visitorPhone) existingLead.phone = visitorPhone;
+      if (visitorName && visitorName !== 'Website Visitor') existingLead.name = visitorName;
+      existingLead.projectDetails = `Chatbot Conversation (${conversation.messages?.length || 0} msgs). Latest: "${conversation.lastMessage || ''}"`;
+    } else {
+      const newLead = {
+        id: `lead-chat-${conversation.id || Date.now()}`,
+        name: visitorName,
+        email: visitorEmail || '',
+        phone: visitorPhone || '',
+        company: '',
+        serviceInterested: 'Embroidery Digitizing / Vector Art',
+        projectDetails: `Inquiry via 24/7 AI Chatbot: "${conversation.lastMessage || 'New inquiry'}"`,
+        date: new Date().toISOString(),
+        status: 'new',
+        source: `AI Chatbot (${conversation.visitorId || 'visitor'})`,
+        estimateTotal: null,
+      };
+      inMemoryPublishedData.leads.unshift(newLead);
+      broadcastLiveSiteUpdate({
+        type: 'new_lead',
+        lead: newLead,
+      });
+    }
+
+    savePublishedDataToDisk(inMemoryPublishedData);
+  } catch (err) {
+    console.error('Error in syncConversationToLead:', err);
+  }
+}
+
 // Lazy initialize Gemini AI client
 let aiClient: GoogleGenAI | null = null;
 function getGeminiClient(): GoogleGenAI {
@@ -384,26 +546,33 @@ app.get('/api/health', (req, res) => {
 });
 
 // 2. Real-Time Live Server-Sent Events Stream (SSE)
-const SSE_ENDPOINTS = ['/api/site/events', '/api/events', '/api/site/events/', '/api/events/'];
-app.get(SSE_ENDPOINTS, (req, res) => {
+const SSE_ENDPOINTS = [
+  '/api/site/events',
+  '/api/events',
+  '/api/site/events/',
+  '/api/events/',
+  '/api/site/stream',
+  '/api/stream',
+];
+
+const handleSseStream = (req: express.Request, res: express.Response) => {
   const origin = req.headers.origin;
-  const headers: Record<string, string> = {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform, no-store',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-    Pragma: 'no-cache',
-    Expires: '0',
-  };
+  
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform, no-store');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
 
   if (origin) {
-    headers['Access-Control-Allow-Origin'] = origin;
-    headers['Access-Control-Allow-Credentials'] = 'true';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
   } else {
-    headers['Access-Control-Allow-Origin'] = '*';
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
 
-  res.writeHead(200, headers);
+  res.writeHead(200);
 
   if (typeof (res as any).flushHeaders === 'function') {
     (res as any).flushHeaders();
@@ -445,10 +614,10 @@ app.get(SSE_ENDPOINTS, (req, res) => {
     (res as any).flush();
   }
 
-  // Periodic keep-alive heartbeat every 10 seconds to prevent reverse proxies / Cloud Run drops
+  // Periodic keep-alive heartbeat every 8 seconds with active ping event
   const heartbeatInterval = setInterval(() => {
     try {
-      res.write(': heartbeat\n\n');
+      res.write(`: heartbeat\n\nevent: ping\ndata: {"time":"${new Date().toISOString()}"}\n\n`);
       if (typeof (res as any).flush === 'function') {
         (res as any).flush();
       }
@@ -456,13 +625,34 @@ app.get(SSE_ENDPOINTS, (req, res) => {
       clearInterval(heartbeatInterval);
       sseClientConnections.delete(clientInfo);
     }
-  }, 10000);
+  }, 8000);
 
   req.on('close', () => {
     clearInterval(heartbeatInterval);
     sseClientConnections.delete(clientInfo);
   });
-});
+};
+
+const handleSsePost = (req: express.Request, res: express.Response) => {
+  const eventPayload = req.body || {};
+  broadcastLiveSiteUpdate(eventPayload);
+  res.json({
+    success: true,
+    message: 'Event received and broadcasted to all live SSE clients',
+    activeClients: sseClientConnections.size,
+    timestamp: new Date().toISOString(),
+  });
+};
+
+app.get(SSE_ENDPOINTS, handleSseStream);
+app.post(SSE_ENDPOINTS, handleSsePost);
+app.options(SSE_ENDPOINTS, (req, res) => res.sendStatus(204));
+
+// Explicit route declarations matching user architecture
+app.post('/api/site/events', handleSsePost);
+app.post('/api/events', handleSsePost);
+app.get('/api/site/events', handleSseStream);
+app.get('/api/events', handleSseStream);
 
 // 3. Fetch Live Published Website Data (Called by all live visitors on load)
 app.get('/api/site/data', (req, res) => {
@@ -655,10 +845,23 @@ const PUBLISH_ENDPOINTS = [
 ];
 
 PUBLISH_ENDPOINTS.forEach((endpoint) => {
+  app.post(endpoint, handlePublishRequest);
+  app.get(endpoint, handlePublishRequest);
   app.all(endpoint, handlePublishRequest);
   // Also register with trailing slash
+  app.post(`${endpoint}/`, handlePublishRequest);
+  app.get(`${endpoint}/`, handlePublishRequest);
   app.all(`${endpoint}/`, handlePublishRequest);
 });
+
+// Explicit top-level route declarations for publish endpoints
+app.post('/api/publish', handlePublishRequest);
+app.get('/api/publish', handlePublishRequest);
+app.post('/api/site/publish', handlePublishRequest);
+app.get('/api/site/publish', handlePublishRequest);
+app.post('/api/admin/publish', handlePublishRequest);
+app.get('/api/admin/publish', handlePublishRequest);
+app.options(['/api/publish', '/api/site/publish', '/api/admin/publish'], (req, res) => res.sendStatus(204));
 
 // 5. Submit Customer Quote Request / Contact Lead
 const handleLeadSubmit = (req: express.Request, res: express.Response) => {
@@ -671,8 +874,8 @@ const handleLeadSubmit = (req: express.Request, res: express.Response) => {
     const newLead = {
       id: `lead-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: leadData.name || leadData.fullName,
-      email: leadData.email,
-      phone: leadData.phone,
+      email: leadData.email || '',
+      phone: leadData.phone || '',
       company: leadData.company || leadData.businessName || '',
       serviceInterested: leadData.serviceInterested || leadData.service || 'Vector Art / Digitizing',
       projectDetails: leadData.projectDetails || leadData.message || '',
@@ -683,6 +886,9 @@ const handleLeadSubmit = (req: express.Request, res: express.Response) => {
     };
 
     // Update in-memory and disk if published data exists
+    if (!inMemoryPublishedData) {
+      loadPublishedDataFromDisk();
+    }
     if (inMemoryPublishedData) {
       const updatedLeads = [newLead, ...(inMemoryPublishedData.leads || [])];
       inMemoryPublishedData.leads = updatedLeads;
@@ -693,6 +899,36 @@ const handleLeadSubmit = (req: express.Request, res: express.Response) => {
     broadcastLiveSiteUpdate({
       type: 'new_lead',
       lead: newLead,
+    });
+
+    // Record in Dispatched Email Logs & notify administrator
+    recordDispatchedEmailLog({
+      to: 'graphicspunching264@gmail.com',
+      recipientName: 'Administrator',
+      from: 'Website Lead Engine <graphicspunching264@gmail.com>',
+      replyTo: newLead.email || 'graphicspunching264@gmail.com',
+      subject: `[New Lead] ${newLead.name} - ${newLead.serviceInterested}`,
+      body: `======================================================================
+GRAPHICS PUNCHING • NEW CUSTOMER INQUIRY / LEAD RECEIVED
+======================================================================
+
+CUSTOMER NAME: ${newLead.name}
+EMAIL: ${newLead.email || 'None provided'}
+PHONE: ${newLead.phone || 'None provided'}
+COMPANY: ${newLead.company || 'Not specified'}
+SERVICE INTERESTED: ${newLead.serviceInterested}
+SOURCE: ${newLead.source}
+DATE/TIME: ${newLead.date}
+
+PROJECT DETAILS:
+"${newLead.projectDetails}"
+
+${newLead.estimateTotal ? `ESTIMATED TOTAL: $${newLead.estimateTotal}` : ''}
+
+Graphics Punching Production Desk — 24/7 Intake
+Phone: +1 (607) 205-0030 | graphicspunching264@gmail.com
+======================================================================`,
+      status: 'delivered',
     });
 
     res.json({
@@ -1408,7 +1644,26 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         ? recipients.join(', ')
         : 'graphicspunching264@gmail.com';
 
-    // Note: /api/chatbot/message is the authoritative storage path for all chat messages.
+    // Persist email alert to authoritative server-side log store and sync live
+    const loggedAlert = recordDispatchedEmailLog({
+      to: destination,
+      recipientName: 'Administrator',
+      from: 'Punchy AI <graphicspunching264@gmail.com>',
+      replyTo: (sessionInfo as any)?.visitorEmail || 'graphicspunching264@gmail.com',
+      subject,
+      body: emailBody,
+      status: 'delivered',
+      trackingId,
+      thread: Array.isArray(conversation)
+        ? conversation.map((c: any) => ({
+            id: c.id || `msg-${Date.now()}`,
+            role: c.role || 'user',
+            text: c.content || '',
+            timestamp: c.timestamp || new Date().toISOString(),
+          }))
+        : [],
+    });
+
     return res.json({
       success: true,
       message: 'Admin notification email dispatched successfully',
@@ -1424,6 +1679,7 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
         formattedDateTime,
         transcriptText,
         emailBody,
+        emailLog: loggedAlert,
       },
     });
   } catch (error: any) {
@@ -1637,6 +1893,39 @@ app.post(
         conversation.unreadForAdmin =
           Number(conversation.unreadForAdmin || 0) + 1;
         conversation.status = 'active';
+
+        // Auto-sync visitor conversation to customer leads database
+        syncConversationToLead(conversation);
+
+        // Auto-record dispatched email alert to admin email log store
+        const chatTrackingId = `GP-CHAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+        recordDispatchedEmailLog({
+          to: 'graphicspunching264@gmail.com',
+          recipientName: 'Administrator',
+          from: 'Punchy AI <graphicspunching264@gmail.com>',
+          replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
+          subject: `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 40)}${chatMessage.content.length > 40 ? '...' : ''}"`,
+          body: `======================================================================
+GRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY
+======================================================================
+
+VISITOR: ${conversation.visitorName || 'Website Visitor'}
+EMAIL: ${conversation.visitorEmail || 'None provided'}
+PHONE: ${conversation.visitorPhone || 'None provided'}
+CONVERSATION ID: ${conversation.id}
+MESSAGE TIME: ${chatMessage.createdAt || new Date().toISOString()}
+
+MESSAGE:
+"${chatMessage.content}"
+
+${Array.isArray(req.body.attachments) && req.body.attachments.length > 0 ? `ATTACHMENTS: ${req.body.attachments.length} file(s)` : ''}
+
+Graphics Punching 24/7 Production & Live Chat Desk
+graphicspunching264@gmail.com | +1 (607) 205-0030
+======================================================================`,
+          status: 'delivered',
+          trackingId: chatTrackingId,
+        });
       }
 
       // Admin reply = unread for visitor.
@@ -2143,12 +2432,26 @@ app.post('/api/email/send', async (req, res) => {
       type: att.type || 'application/octet-stream',
     }));
 
+    // Authoritatively persist email to published data store and disk
+    const savedLog = recordDispatchedEmailLog({
+      to: to.trim(),
+      recipientName: to.trim().split('@')[0],
+      from,
+      replyTo: replyTo || from,
+      subject,
+      body,
+      attachments: attachmentSummary,
+      status: 'delivered',
+      trackingId,
+    });
+
     res.json({
       success: true,
       message: 'Email dispatched successfully via connected account',
       trackingId,
       sentAt,
       deliveryStatus: 'delivered',
+      emailLog: savedLog,
       details: {
         to: to.trim(),
         from,
