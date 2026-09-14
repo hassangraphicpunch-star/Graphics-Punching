@@ -1,0 +1,15 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "graphics-punching-sj9q.vercel.app"
+        }
+      ],
+      "destination": "https://www.graphicspunching.com/$1",
+      "permanent": true
+    }
+  ]
+}
