@@ -5,7 +5,7 @@
       "has": [
         {
           "type": "host",
-          "value": "graphics-punching-sj9q.vercel.app"
+          "value": "graphics-punching.vercel.app"
         }
       ],
       "destination": "https://www.graphicspunching.com/$1",
