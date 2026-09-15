@@ -1,4 +1,6 @@
 import React from 'react';
+import brandLogo from '../assets/images/logo.png';
+import brandFavicon from '../assets/images/favicon.png';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full' | 'nav' | 'footer';
@@ -13,16 +15,42 @@ export const Logo: React.FC<LogoProps> = ({
   showSubtext = true,
   className = '' 
 }) => {
+  const primaryLogoSrc = brandLogo || '/logo.png';
+  const fallbackFaviconSrc = brandFavicon || '/favicon.png';
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const target = e.currentTarget;
+    const currentSrc = target.src;
+
+    if (!currentSrc.includes('/logo.png') && !currentSrc.includes('logo-')) {
+      target.src = '/logo.png';
+    } else if (!currentSrc.includes('/favicon.png') && !currentSrc.includes('favicon-')) {
+      target.src = fallbackFaviconSrc;
+    } else {
+      target.style.display = 'none';
+      if (target.nextElementSibling) {
+        (target.nextElementSibling as HTMLElement).style.display = 'flex';
+      }
+    }
+  };
+
   if (variant === 'badge') {
     return (
       <div className={`flex flex-col items-center text-center group cursor-pointer ${className}`} id="gp-brand-badge">
         <div className="relative rounded-full p-1 bg-gradient-to-b from-[#FFC400] via-[#d4a000] to-zinc-900 shadow-[0_0_30px_rgba(255,196,0,0.3)] group-hover:shadow-[0_0_40px_rgba(255,196,0,0.5)] transition-all duration-300">
           <div className="rounded-full bg-[#0A0A0A] w-36 h-36 sm:w-44 sm:h-44 flex items-center justify-center p-2 border border-zinc-800 text-center overflow-hidden">
             <img 
-              src="/logo.png" 
+              src={primaryLogoSrc} 
               alt="Graphics Punching Official Logo" 
               className="w-full h-full object-contain transform group-hover:scale-105 transition-transform duration-300"
+              onError={handleImageError}
+              loading="eager"
             />
+            <div className="w-full h-full rounded-full bg-[#0e0e10] border border-[#FFC400]/40 items-center justify-center hidden">
+              <span className="font-display font-black text-[#FFC400] text-xl tracking-tighter">
+                GP
+              </span>
+            </div>
           </div>
         </div>
         <div className="mt-3 flex flex-col items-center">
@@ -102,21 +130,11 @@ export const Logo: React.FC<LogoProps> = ({
         
         <div className={`${dims.iconSize} relative rounded-full bg-gradient-to-b from-[#1c1a12] to-[#0a0a0a] border border-[#FFC400]/80 p-0.5 shadow-[0_2px_12px_rgba(255,196,0,0.25)] overflow-hidden transition-transform duration-300 group-hover:scale-105 flex items-center justify-center`}>
           <img 
-            src="/logo.png" 
+            src={primaryLogoSrc} 
             alt="Graphics Punching Logo" 
             className="w-full h-full object-cover rounded-full"
-            onError={(e) => {
-              // Fallback to favicon.png or text GP
-              const target = e.currentTarget;
-              if (target.src.includes('/logo.png')) {
-                target.src = '/favicon.png';
-              } else {
-                target.style.display = 'none';
-                if (target.nextElementSibling) {
-                  (target.nextElementSibling as HTMLElement).style.display = 'flex';
-                }
-              }
-            }}
+            onError={handleImageError}
+            loading="eager"
           />
           <div className="w-full h-full rounded-full bg-[#0e0e10] border border-[#FFC400]/40 items-center justify-center hidden">
             <span className="font-display font-black text-[#FFC400] text-xs tracking-tighter">

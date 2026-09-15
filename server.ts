@@ -2794,14 +2794,53 @@ app.use('/src/assets/images', express.static(imagesDir, staticImageOptions));
 app.use('/assets/images', express.static(imagesDir, staticImageOptions));
 app.use('/images', express.static(imagesDir, staticImageOptions));
 
+// Explicit root and static image handlers for logo, favicon, and app icons with CORS & cache headers
+const publicDir = path.join(process.cwd(), 'public');
+const distDir = path.join(process.cwd(), 'dist');
+
+app.get(
+  ['/favicon.ico', '/favicon.png', '/logo.png', '/apple-touch-icon.png', '/apple-touch-icon-precomposed.png'],
+  (req, res) => {
+    const filename = path.basename(req.path);
+    const candidatePaths = [
+      path.join(publicDir, filename),
+      path.join(distDir, filename),
+      path.join(imagesDir, filename),
+      path.join(publicDir, 'favicon.png'),
+      path.join(imagesDir, 'favicon.png'),
+    ];
+
+    for (const p of candidatePaths) {
+      if (fs.existsSync(p)) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        if (filename.endsWith('.ico')) {
+          res.setHeader('Content-Type', 'image/x-icon');
+        } else if (filename.endsWith('.png')) {
+          res.setHeader('Content-Type', 'image/png');
+        }
+        return res.sendFile(p);
+      }
+    }
+    res.status(404).send('Icon not found');
+  }
+);
+
 // Direct filename resolver for images (e.g. /ms_dragon_embroidery_1787087913479.jpg or /assets/ms_dragon_embroidery_1787087913479.jpg)
 app.get(['/:filename(*.jpg)', '/:filename(*.jpeg)', '/:filename(*.png)', '/:filename(*.webp)', '/:filename(*.svg)', '/assets/:filename(*.jpg)', '/assets/:filename(*.jpeg)', '/assets/:filename(*.png)'], (req, res, next) => {
   const filename = path.basename(req.params.filename);
-  const candidatePath = path.join(imagesDir, filename);
-  if (fs.existsSync(candidatePath)) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-    return res.sendFile(candidatePath);
+  const candidatePaths = [
+    path.join(imagesDir, filename),
+    path.join(publicDir, filename),
+    path.join(distDir, filename),
+  ];
+  for (const candidatePath of candidatePaths) {
+    if (fs.existsSync(candidatePath)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      return res.sendFile(candidatePath);
+    }
   }
   next();
 });

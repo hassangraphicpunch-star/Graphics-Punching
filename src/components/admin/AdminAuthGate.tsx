@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, ShieldCheck, KeyRound, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useWebsiteSettings } from '../../context/AdminSettingsContext';
+import brandLogo from '../../assets/images/logo.png';
 
 interface AdminAuthGateProps {
   onSuccess?: () => void;
@@ -55,9 +56,17 @@ export const AdminAuthGate: React.FC<AdminAuthGateProps> = ({ onSuccess }) => {
           <div className="absolute -inset-1 bg-gradient-to-tr from-[#FFC400]/40 to-transparent rounded-full blur-md" />
           <div className="w-20 h-20 rounded-full bg-zinc-950 border-2 border-[#FFC400]/80 p-1 shadow-2xl relative flex items-center justify-center overflow-hidden">
             <img 
-              src="/logo.png" 
+              src={brandLogo || '/logo.png'} 
               alt="Graphics Punching Logo" 
               className="w-full h-full object-contain rounded-full" 
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('/logo.png')) {
+                  target.src = '/logo.png';
+                } else {
+                  target.src = '/favicon.png';
+                }
+              }}
             />
           </div>
           <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[#FFC400] text-black flex items-center justify-center shadow-lg border border-black font-bold">

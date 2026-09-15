@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckCircle2, ShieldCheck, Sparkles, Zap, Award, Factory, ArrowRight, Cpu, Layers, Palette, Clock, Facebook, ExternalLink } from 'lucide-react';
 import { useWebsiteSettings } from '../context/AdminSettingsContext';
+import brandLogo from '../assets/images/logo.png';
 
 interface AboutSectionProps {
   onOpenQuoteModal: () => void;
@@ -21,9 +22,17 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ onOpenQuoteModal }) 
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-zinc-900 border border-[#FFC400]/50 p-0.5 shadow-md flex items-center justify-center overflow-hidden shrink-0">
                     <img 
-                      src="/logo.png" 
+                      src={brandLogo || '/logo.png'} 
                       alt="Graphics Punching Logo" 
                       className="w-full h-full object-contain rounded-full" 
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.src.includes('/logo.png')) {
+                          target.src = '/logo.png';
+                        } else {
+                          target.src = '/favicon.png';
+                        }
+                      }}
                     />
                   </div>
                   <div>
