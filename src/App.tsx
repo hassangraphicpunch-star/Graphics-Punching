@@ -26,9 +26,58 @@ import { ContactPage } from './pages/ContactPage';
 import { PORTFOLIO_PROJECTS } from './data/content';
 import { preloadPortfolioWatermarks } from './utils/watermark';
 
+function resolveRouteFromUrl(): string {
+  if (typeof window === 'undefined') return 'home';
+
+  // 1. Check hash first (e.g. #/services, #services, #/pricing)
+  const rawHash = window.location.hash.replace(/^#\/?/, '').toLowerCase().trim();
+  // 2. Check pathname next (e.g. /services, /pricing, /admin)
+  const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase().trim();
+
+  const candidate = rawHash || rawPath;
+
+  if (!candidate || candidate === 'home') {
+    return 'home';
+  }
+
+  const validPages = [
+    'services',
+    'pricing',
+    'portfolio',
+    'vector-files',
+    'embroidery-files',
+    'screen-printing-files',
+    'patch-design',
+    'about',
+    'how-it-works',
+    'testimonials',
+    'faq',
+    'contact',
+    'admin',
+  ];
+
+  if (validPages.includes(candidate)) {
+    return candidate;
+  }
+
+  // Admin aliases
+  if (['settings', 'email-chatbot', 'admin-portal', 'dashboard', 'login'].includes(candidate)) {
+    return 'admin';
+  }
+
+  // Common aliases
+  if (candidate === 'pricing-schedule') return 'pricing';
+  if (['portfolio-vector', 'vector', 'vectors', 'vector-art', 'vector-artwork'].includes(candidate)) return 'vector-files';
+  if (['portfolio-embroidery', 'embroidery', 'embroidery-digitizing', 'digitizing'].includes(candidate)) return 'embroidery-files';
+  if (['portfolio-screen-printing', 'screen-printing', 'screen-print', 'color-separations'].includes(candidate)) return 'screen-printing-files';
+  if (['patch', 'patches', 'patch-files', 'custom-patches', 'custom-patch'].includes(candidate)) return 'patch-design';
+
+  return 'home';
+}
+
 function MainAppContent() {
   const { previewMode, togglePreviewMode, isAdminAuthenticated, settings } = useWebsiteSettings();
-  const [currentPage, setCurrentPage] = useState<string>('home');
+  const [currentPage, setCurrentPage] = useState<string>(resolveRouteFromUrl());
 
   // Pre-generate watermarks into cache for instant right-click protection & lightning display
   useEffect(() => {
@@ -45,65 +94,54 @@ function MainAppContent() {
   const [modalTier, setModalTier] = useState('simple-vector');
   const [modalItem, setModalItem] = useState('');
 
-      // Sync state with URL hash
+  // Sync state with URL hash and pathname (supports direct URL access & browser back/forward)
   useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
-      if (!hash || hash === 'home') {
-        setCurrentPage('home');
-      } else if (
-        [
-          'services', 
-          'pricing', 
-          'portfolio', 
-          'vector-files',
-          'embroidery-files',
-          'screen-printing-files',
-          'patch-design',
-          'about', 
-          'how-it-works', 
-          'testimonials', 
-          'faq', 
-          'contact',
-          'admin',
-          'settings',
-          'email-chatbot',
-          'admin-portal'
-        ].includes(hash)
-      ) {
-        if (['settings', 'email-chatbot', 'admin-portal'].includes(hash)) {
-          setCurrentPage('admin');
-        } else {
-          setCurrentPage(hash);
-        }
-      } else if (hash === 'pricing-schedule') {
-        setCurrentPage('pricing');
-      } else if (hash === 'portfolio-vector' || hash === 'vector' || hash === 'vectors') {
-        setCurrentPage('vector-files');
-      } else if (hash === 'portfolio-embroidery' || hash === 'embroidery' || hash === 'embroidery-digitizing') {
-        setCurrentPage('embroidery-files');
-      } else if (hash === 'portfolio-screen-printing' || hash === 'screen-printing' || hash === 'screen-print') {
-        setCurrentPage('screen-printing-files');
-      } else if (hash === 'patch' || hash === 'patches' || hash === 'patch-files' || hash === 'custom-patches') {
-        setCurrentPage('patch-design');
-      } else {
-        setCurrentPage('home');
-      }
+    const syncRoute = () => {
+      const page = resolveRouteFromUrl();
+      setCurrentPage(page);
       window.scrollTo({ top: 0, behavior: 'instant' });
     };
 
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    syncRoute();
+    window.addEventListener('hashchange', syncRoute);
+    window.addEventListener('popstate', syncRoute);
+    return () => {
+      window.removeEventListener('hashchange', syncRoute);
+      window.removeEventListener('popstate', syncRoute);
+    };
   }, []);
 
   const navigateTo = (page: string) => {
     const targetHash = page === 'home' ? '#/' : `#/${page}`;
-    if (window.location.hash === targetHash) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
+    const targetPath = page === 'home' ? '/' : `/${page}`;
+
+    if (window.location.hash !== targetHash) {
       window.location.hash = targetHash;
     }
+    try {
+      window.history.pushState(null, '', targetPath);
+    } catch {}
+
+    const resolved = [
+      'services',
+      'pricing',
+      'portfolio',
+      'vector-files',
+      'embroidery-files',
+      'screen-printing-files',
+      'patch-design',
+      'about',
+      'how-it-works',
+      'testimonials',
+      'faq',
+      'contact',
+      'admin',
+    ].includes(page)
+      ? page
+      : resolveRouteFromUrl();
+
+    setCurrentPage(resolved);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const openQuoteModal = (serviceId: string = 'vector-artwork', tierId: string = '', itemTitle: string = '') => {

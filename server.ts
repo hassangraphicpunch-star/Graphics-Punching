@@ -1171,8 +1171,8 @@ async function handlePublishRequest(req: express.Request, res: express.Response)
 
 // Canonical registration for publish endpoints - NO duplicate routes
 app.get(['/api/publish', '/api/site/publish', '/api/admin/publish'], handlePublishRequest);
-app.post(['/api/publish', '/api/site/publish', '/api/admin/publish'], handlePublishRequest);
-app.options(['/api/publish', '/api/site/publish', '/api/admin/publish'], (req, res) => res.sendStatus(204));
+app.post(['/api/publish', '/api/site/publish', '/api/admin/publish', '/api/site/data'], handlePublishRequest);
+app.options(['/api/publish', '/api/site/publish', '/api/admin/publish', '/api/site/data'], (req, res) => res.sendStatus(204));
 
 // 4. Submit Customer Quote Request / Contact Lead
 const handleLeadSubmit = async (req: express.Request, res: express.Response) => {
@@ -2842,4 +2842,8 @@ async function setupServer() {
   });
 }
 
-setupServer();
+export default app;
+
+if (!process.env.VERCEL) {
+  setupServer();
+}

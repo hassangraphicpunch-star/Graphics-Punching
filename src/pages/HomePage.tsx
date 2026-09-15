@@ -5,6 +5,7 @@ import { CTASection } from '../components/CTASection';
 import { ImageLightboxModal, LightboxImageItem } from '../components/ImageLightboxModal';
 import { WatermarkOverlay } from '../components/WatermarkOverlay';
 import { WatermarkedPortfolioImage } from '../components/WatermarkedPortfolioImage';
+import { BeforeAfterSlider } from '../components/BeforeAfterSlider';
 import { 
   Sparkles, ArrowRight, ShieldCheck, Zap, Palette, Layers, 
   CheckCircle2, Clock, Star, Maximize2, Scissors, Cpu
@@ -259,6 +260,25 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenQuoteModal
             <p className="mt-2 text-zinc-400 text-xs sm:text-sm leading-relaxed">
               Compare our industry-grade machine calibrations with standard raw artwork files across Vector &amp; Embroidery workflows.
             </p>
+          </div>
+
+          {/* Interactive Before/After Comparison Slider */}
+          <div className="mb-10 max-w-5xl mx-auto">
+            <BeforeAfterSlider
+              beforeImage="/assets/images/northeastern_utilities_vector_1787011793570.jpg"
+              afterImage="/assets/images/port_city_band_logo_1787082507709.jpg"
+              beforeLabel="Original Low-Res / Raw Bitmap"
+              afterLabel="GP Calibrated Vector & Sewout Master"
+              title="Interactive Quality Comparison: Raw Input vs. Production Master"
+              subtitle="Drag the slider horizontally or click the view buttons to inspect micro-detail clarity, clean curves, and stitch density."
+              specs={[
+                '100% Machine Tested',
+                'Mathematical Bézier Paths',
+                'Calibrated Pull Compensation',
+                'Zero Thread Breaks Guarantee',
+              ]}
+              onOpenQuote={() => onOpenQuoteModal('vector-artwork', 'simple-vector')}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 items-stretch">

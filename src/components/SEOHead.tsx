@@ -169,9 +169,10 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
     const finalKeywords = keywords || baseKeywords || 'embroidery digitizing, vector artwork, screen printing';
     const finalPath = canonicalPath || config.canonicalPath || (page === 'home' ? '/' : `/#/${page}`);
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://graphicspunching.com';
-    const canonicalUrl = `${origin}${finalPath.startsWith('/') ? '' : '/'}${finalPath}`;
-    const absoluteImageUrl = image.startsWith('http') ? image : `${origin}${image.startsWith('/') ? '' : '/'}${image}`;
+    const PRIMARY_DOMAIN = 'https://www.graphicspunching.com';
+    const cleanPath = finalPath.replace(/^#\/?/, '').replace(/^\/+/, '');
+    const canonicalUrl = cleanPath ? `${PRIMARY_DOMAIN}/${cleanPath}` : `${PRIMARY_DOMAIN}/`;
+    const absoluteImageUrl = image.startsWith('http') ? image : `${PRIMARY_DOMAIN}${image.startsWith('/') ? '' : '/'}${image}`;
 
     // 1. Document Title
     document.title = finalTitle;
@@ -211,8 +212,8 @@ export const SEOHead: React.FC<SEOHeadProps> = ({
       '@context': 'https://schema.org',
       '@type': 'ProfessionalService',
       name: settings?.branding?.siteName || 'Graphics Punching',
-      url: origin,
-      logo: `${origin}/favicon.png`,
+      url: PRIMARY_DOMAIN,
+      logo: `${PRIMARY_DOMAIN}/favicon.png`,
       email: settings?.contact?.email || CONTACT_INFO.email,
       telephone: settings?.contact?.phone || CONTACT_INFO.phone,
       description: finalDescription,
