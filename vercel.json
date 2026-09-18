@@ -10,6 +10,17 @@
       ],
       "destination": "https://www.graphicspunching.com/$1",
       "permanent": true
+    },
+    {
+      "source": "/((?!favicon|apple-touch|logo|site\\.webmanifest|robots\\.txt|sitemap\\.xml).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "graphicspunching.com"
+        }
+      ],
+      "destination": "https://www.graphicspunching.com/$1",
+      "permanent": true
     }
   ],
   "headers": [
@@ -31,7 +42,7 @@
       ]
     },
     {
-      "source": "/(favicon.*|logo.*|apple-touch-icon.*)",
+      "source": "/(favicon.*|logo.*|apple-touch-icon.*|site\\.webmanifest)",
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
@@ -43,7 +54,7 @@
         },
         {
           "key": "Cache-Control",
-          "value": "public, max-age=86400"
+          "value": "public, max-age=86400, stale-while-revalidate=604800"
         }
       ]
     }

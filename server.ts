@@ -2799,7 +2799,21 @@ const publicDir = path.join(process.cwd(), 'public');
 const distDir = path.join(process.cwd(), 'dist');
 
 app.get(
-  ['/favicon.ico', '/favicon.png', '/logo.png', '/apple-touch-icon.png', '/apple-touch-icon-precomposed.png'],
+  [
+    '/favicon.ico',
+    '/favicon.png',
+    '/favicon-16x16.png',
+    '/favicon-32x32.png',
+    '/favicon-48x48.png',
+    '/favicon-96x96.png',
+    '/favicon-192x192.png',
+    '/favicon-512x512.png',
+    '/logo.png',
+    '/apple-touch-icon.png',
+    '/apple-touch-icon-precomposed.png',
+    '/site.webmanifest',
+    '/manifest.json',
+  ],
   (req, res) => {
     const filename = path.basename(req.path);
     const candidatePaths = [
@@ -2819,6 +2833,8 @@ app.get(
           res.setHeader('Content-Type', 'image/x-icon');
         } else if (filename.endsWith('.png')) {
           res.setHeader('Content-Type', 'image/png');
+        } else if (filename.endsWith('.webmanifest') || filename.endsWith('.json')) {
+          res.setHeader('Content-Type', 'application/manifest+json');
         }
         return res.sendFile(p);
       }
