@@ -6,11 +6,23 @@ import {
 } from 'lucide-react';
 
 interface ServicesPageProps {
-  onOpenQuoteModal: (serviceId?: string, tierId?: string, itemTitle?: string) => void;
+  onOpenQuoteModal?: (serviceId?: string, tierId?: string, itemTitle?: string) => void;
+  onSelectServiceForQuote?: (serviceId?: string, tierId?: string, itemTitle?: string) => void;
   onNavigate: (page: string) => void;
 }
 
-export const ServicesPage: React.FC<ServicesPageProps> = ({ onOpenQuoteModal, onNavigate }) => {
+export const ServicesPage: React.FC<ServicesPageProps> = ({ 
+  onOpenQuoteModal, 
+  onSelectServiceForQuote, 
+  onNavigate 
+}) => {
+  const handleSelectService = (serviceId?: string, tierId?: string, itemTitle?: string) => {
+    if (typeof onOpenQuoteModal === 'function') {
+      onOpenQuoteModal(serviceId, tierId, itemTitle);
+    } else if (typeof onSelectServiceForQuote === 'function') {
+      onSelectServiceForQuote(serviceId, tierId, itemTitle);
+    }
+  };
   return (
     <div className="animate-fadeIn overflow-hidden">
       {/* Dedicated Page Hero Header */}
@@ -35,9 +47,7 @@ export const ServicesPage: React.FC<ServicesPageProps> = ({ onOpenQuoteModal, on
 
       {/* Main Services Section Component */}
       <ServicesSection
-        onSelectServiceForQuote={(serviceId, tierId, itemTitle) =>
-          onOpenQuoteModal(serviceId, tierId, itemTitle)
-        }
+        onSelectServiceForQuote={handleSelectService}
       />
 
       {/* Production Format & Machine Compatibility Specification Strip */}

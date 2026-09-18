@@ -206,10 +206,14 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ onSelectServic
                 </div>
 
                 {/* Card Bottom CTA Actions */}
-                <div className="p-6 pt-0 mt-4 space-y-2">
+                <div className="p-6 pt-0 mt-4 space-y-2 relative z-10">
                   <button
                     type="button"
-                    onClick={() => onSelectServiceForQuote(pkg.serviceId, pkg.tierId, pkg.name)}
+                    aria-label={`Order ${pkg.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectServiceForQuote(pkg.serviceId, pkg.tierId, pkg.name);
+                    }}
                     className={`w-full py-3.5 px-4 rounded-xl font-display font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer ${
                       isPopular
                         ? 'bg-[#FFC400] hover:bg-[#ffcd1a] text-black shadow-[0_4px_16px_rgba(255,196,0,0.3)] hover:scale-[1.01]'

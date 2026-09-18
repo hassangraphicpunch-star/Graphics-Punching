@@ -21,9 +21,9 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   const allPackages = settings?.pricingPackages?.length ? settings.pricingPackages : SERVICE_PACKAGES;
 
   const handleOrder = (serviceId: string, tierId: string, name: string) => {
-    if (onOpenQuoteModal) {
+    if (typeof onOpenQuoteModal === 'function') {
       onOpenQuoteModal(serviceId, tierId, name);
-    } else if (onSelectTierForQuote) {
+    } else if (typeof onSelectTierForQuote === 'function') {
       onSelectTierForQuote(name);
     }
   };
@@ -114,16 +114,21 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                     </ul>
                   </div>
 
-                  <div className="pt-8">
+                  <div className="pt-8 relative z-10">
                     <button
-                      onClick={() => handleOrder('vector-artwork', pkg.id, pkg.name)}
+                      type="button"
+                      aria-label={`Order ${pkg.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOrder('vector-artwork', pkg.id, pkg.name);
+                      }}
                       className={`w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
                         pkg.popular
                           ? 'bg-[#FFC400] hover:bg-[#ffcd1a] text-black shadow-lg'
                           : 'bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700'
                       }`}
                     >
-                      <span>Order This Package</span>
+                      <span>Order {pkg.name}</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -192,16 +197,21 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                     </ul>
                   </div>
 
-                  <div className="pt-8">
+                  <div className="pt-8 relative z-10">
                     <button
-                      onClick={() => handleOrder('embroidery', pkg.id, pkg.name)}
+                      type="button"
+                      aria-label={`Order ${pkg.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOrder('logo-digitizing', pkg.id, pkg.name);
+                      }}
                       className={`w-full py-3.5 rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
                         pkg.popular
                           ? 'bg-[#FFC400] hover:bg-[#ffcd1a] text-black shadow-lg'
                           : 'bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700'
                       }`}
                     >
-                      <span>Order This Package</span>
+                      <span>Order {pkg.name}</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>

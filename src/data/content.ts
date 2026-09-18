@@ -138,7 +138,7 @@ export const SERVICE_PACKAGES: ServicePackage[] = [
     tierId: 'advance-vector',
     category: 'vector',
     categoryLabel: 'Vector Artwork',
-    name: 'Advance Vector',
+    name: 'Advanced Vector',
     price: 45,
     priceDisplay: '$45',
     unit: '/ file',
@@ -326,7 +326,7 @@ export const PRICING_DATA = {
     },
     {
       id: 'advance-vector',
-      title: 'Advance Vector',
+      title: 'Advanced Vector',
       price: 45,
       priceDisplay: '$45',
       unit: '/ file',

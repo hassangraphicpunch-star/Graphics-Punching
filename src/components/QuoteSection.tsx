@@ -11,25 +11,90 @@ interface QuoteSectionProps {
   defaultService?: string;
   defaultTier?: string;
   prefillNote?: string;
+  packageName?: string;
+}
+
+export function normalizeServiceAndTier(service?: string, tier?: string, noteOrTitle?: string) {
+  const s = (service || '').toLowerCase().trim();
+  const t = (tier || '').toLowerCase().trim();
+  const n = (noteOrTitle || '').toLowerCase().trim();
+  const combined = `${s} ${t} ${n}`;
+
+  // Digitizing matches
+  if (
+    combined.includes('jacket') || 
+    combined.includes('full scale') ||
+    t === 'jacket-back'
+  ) {
+    return { service: 'logo-digitizing', tier: 'jacket-back', activeTab: 'digitizing' as const, label: 'Jacket Back (Full Scale)' };
+  }
+
+  if (
+    combined.includes('mid-size') || 
+    combined.includes('mid size') || 
+    combined.includes('5" to 8"') || 
+    combined.includes('5"-8"') ||
+    t === 'mid-size'
+  ) {
+    return { service: 'logo-digitizing', tier: 'mid-size', activeTab: 'digitizing' as const, label: 'Mid Size (5" to 8")' };
+  }
+
+  if (
+    combined.includes('left-chest') || 
+    combined.includes('left chest') || 
+    combined.includes('cap') || 
+    t === 'left-chest-cap' ||
+    s.includes('digitizing') || 
+    s.includes('embroidery')
+  ) {
+    return { service: 'logo-digitizing', tier: 'left-chest-cap', activeTab: 'digitizing' as const, label: 'Left Chest & Cap' };
+  }
+
+  // Vector matches
+  if (
+    combined.includes('color-sep') || 
+    combined.includes('color separation') || 
+    t === 'color-separation'
+  ) {
+    return { service: 'vector-artwork', tier: 'color-separation', activeTab: 'vector' as const, label: 'Color Separation' };
+  }
+
+  if (
+    combined.includes('advanced') || 
+    combined.includes('advance') || 
+    t === 'advance-vector' || 
+    t === 'advanced-vector'
+  ) {
+    return { service: 'vector-artwork', tier: 'advance-vector', activeTab: 'vector' as const, label: 'Advanced Vector' };
+  }
+
+  if (
+    combined.includes('complex') || 
+    t === 'complex-vector'
+  ) {
+    return { service: 'vector-artwork', tier: 'complex-vector', activeTab: 'vector' as const, label: 'Complex Vector' };
+  }
+
+  return { service: 'vector-artwork', tier: 'simple-vector', activeTab: 'vector' as const, label: 'Simple Vector' };
 }
 
 export const QuoteSection: React.FC<QuoteSectionProps> = ({ 
   defaultService = 'vector-artwork', 
   defaultTier = 'simple-vector', 
-  prefillNote = '' 
+  prefillNote = '',
+  packageName = ''
 }) => {
-  const [activePriceTab, setActivePriceTab] = useState<'vector' | 'digitizing'>(
-    defaultService === 'logo-digitizing' ? 'digitizing' : 'vector'
-  );
+  const initialNorm = normalizeServiceAndTier(defaultService, defaultTier, packageName || prefillNote);
+  const [activePriceTab, setActivePriceTab] = useState<'vector' | 'digitizing'>(initialNorm.activeTab);
   
   const [formData, setFormData] = useState({
     fullName: '',
     businessName: '',
     email: '',
     phone: '',
-    service: defaultService,
-    vectorTier: defaultService === 'vector-artwork' && defaultTier ? defaultTier : 'simple-vector',
-    digitizingTier: defaultService === 'logo-digitizing' && defaultTier ? defaultTier : 'left-chest-cap',
+    service: initialNorm.service,
+    vectorTier: initialNorm.service === 'vector-artwork' ? initialNorm.tier : 'simple-vector',
+    digitizingTier: initialNorm.service === 'logo-digitizing' ? initialNorm.tier : 'left-chest-cap',
     quantity: '1',
     garmentType: 't-shirts',
     deadline: 'standard',
@@ -37,21 +102,16 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({
   });
 
   useEffect(() => {
-    if (defaultService) {
-      setFormData(prev => ({
-        ...prev,
-        service: defaultService,
-        vectorTier: defaultService === 'vector-artwork' && defaultTier ? defaultTier : prev.vectorTier,
-        digitizingTier: defaultService === 'logo-digitizing' && defaultTier ? defaultTier : prev.digitizingTier,
-        message: prefillNote || prev.message,
-      }));
-      if (defaultService === 'logo-digitizing') {
-        setActivePriceTab('digitizing');
-      } else if (defaultService === 'vector-artwork') {
-        setActivePriceTab('vector');
-      }
-    }
-  }, [defaultService, defaultTier, prefillNote]);
+    const { service: normService, tier: normTier, activeTab } = normalizeServiceAndTier(defaultService, defaultTier, packageName || prefillNote);
+    setFormData(prev => ({
+      ...prev,
+      service: normService,
+      vectorTier: normService === 'vector-artwork' ? normTier : prev.vectorTier,
+      digitizingTier: normService === 'logo-digitizing' ? normTier : prev.digitizingTier,
+      message: prefillNote || prev.message,
+    }));
+    setActivePriceTab(activeTab);
+  }, [defaultService, defaultTier, prefillNote, packageName]);
 
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -76,19 +136,22 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({
       if (formData.vectorTier === 'complex-vector') {
         basePerUnit = 25;
         tierLabel = 'Complex Vector';
-      } else if (formData.vectorTier === 'advance-vector') {
+      } else if (formData.vectorTier === 'advance-vector' || formData.vectorTier === 'advanced-vector') {
         basePerUnit = 45;
-        tierLabel = 'Advance Vector';
+        tierLabel = 'Advanced Vector';
       } else if (formData.vectorTier === 'color-separation') {
         basePerUnit = 10;
         tierLabel = 'Color Separation';
         unitName = 'separation';
+      } else {
+        basePerUnit = 15;
+        tierLabel = 'Simple Vector';
       }
     } else if (formData.service === 'logo-digitizing') {
       unitName = 'design';
       if (formData.digitizingTier === 'mid-size') {
         basePerUnit = 25;
-        tierLabel = 'Mid Size (5"-8")';
+        tierLabel = 'Mid Size (5" to 8")';
       } else if (formData.digitizingTier === 'jacket-back') {
         basePerUnit = 40;
         tierLabel = 'Jacket Back (Full Scale)';
@@ -804,64 +867,89 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({
                   </div>
 
                   {/* 2. Service & Specifications */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                    <div>
-                      <label className="block text-xs font-black uppercase text-zinc-900 mb-1.5" htmlFor="service">
-                        Service Needed <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        id="service"
-                        value={formData.service}
-                        onChange={(e) => {
-                          const s = e.target.value;
-                          setFormData({ 
-                            ...formData, 
-                            service: s,
-                            quantity: '1'
-                          });
-                        }}
-                        className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 text-sm font-medium focus:bg-white focus:border-black focus:outline-none"
-                      >
-                        <option value="vector-artwork">Vector Artwork (Flat Rates: $10 - $45)</option>
-                        <option value="logo-digitizing">Logo Digitizing (Flat Rates: $15 - $40)</option>
-                      </select>
+                  <div className="pt-2 space-y-3">
+                    {/* Selected Service Package Indicator */}
+                    <div className="bg-amber-500/10 border border-[#FFC400]/40 rounded-xl p-3 sm:p-3.5 flex items-center justify-between shadow-xs">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-[#FFC400] text-black flex items-center justify-center font-bold shrink-0">
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider block">
+                            Selected Order Service
+                          </span>
+                          <span className="font-display font-black text-sm sm:text-base text-zinc-900 uppercase">
+                            {estimate.tierLabel}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] uppercase font-bold text-zinc-500 block">Wholesale Rate</span>
+                        <span className="font-display font-black text-base sm:text-lg text-black">
+                          ${estimate.basePerUnit} <span className="text-xs font-normal text-zinc-600">/ {estimate.unitName}</span>
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Conditional Tier Selector */}
-                    {formData.service === 'vector-artwork' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-xs font-black uppercase text-zinc-900 mb-1.5" htmlFor="vectorTier">
-                          Vector Complexity / Type <span className="text-red-500">*</span>
+                        <label className="block text-xs font-black uppercase text-zinc-900 mb-1.5" htmlFor="service">
+                          Service Needed <span className="text-red-500">*</span>
                         </label>
                         <select
-                          id="vectorTier"
-                          value={formData.vectorTier}
-                          onChange={(e) => setFormData({ ...formData, vectorTier: e.target.value })}
-                          className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 text-sm font-bold focus:bg-white focus:border-black focus:outline-none"
+                          id="service"
+                          value={formData.service}
+                          onChange={(e) => {
+                            const s = e.target.value;
+                            setFormData({ 
+                              ...formData, 
+                              service: s,
+                              quantity: '1'
+                            });
+                          }}
+                          className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 text-sm font-medium focus:bg-white focus:border-black focus:outline-none"
                         >
-                          <option value="simple-vector">SIMPLE VECTOR — $15 / file</option>
-                          <option value="complex-vector">COMPLEX VECTOR — $25 / file</option>
-                          <option value="advance-vector">ADVANCE VECTOR — $45 / file</option>
-                          <option value="color-separation">COLOR SEPARATION — $10 / separation</option>
+                          <option value="vector-artwork">Vector Artwork (Flat Rates: $10 - $45)</option>
+                          <option value="logo-digitizing">Logo Digitizing (Flat Rates: $15 - $40)</option>
                         </select>
                       </div>
-                    ) : (
-                      <div>
-                        <label className="block text-xs font-black uppercase text-zinc-900 mb-1.5" htmlFor="digitizingTier">
-                          Digitizing Size / Location <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          id="digitizingTier"
-                          value={formData.digitizingTier}
-                          onChange={(e) => setFormData({ ...formData, digitizingTier: e.target.value })}
-                          className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 text-sm font-bold focus:bg-white focus:border-black focus:outline-none"
-                        >
-                          <option value="left-chest-cap">LEFT CHEST &amp; CAP — $15 / design</option>
-                          <option value="mid-size">MID SIZE (5" to 8") — $25 / design</option>
-                          <option value="jacket-back">JACKET BACK (Full Scale) — $40 / design</option>
-                        </select>
-                      </div>
-                    )}
+
+                      {/* Conditional Tier Selector */}
+                      {formData.service === 'vector-artwork' ? (
+                        <div>
+                          <label className="block text-xs font-black uppercase text-zinc-900 mb-1.5" htmlFor="vectorTier">
+                            Vector Complexity / Type <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            id="vectorTier"
+                            value={formData.vectorTier}
+                            onChange={(e) => setFormData({ ...formData, vectorTier: e.target.value })}
+                            className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 text-sm font-bold focus:bg-white focus:border-black focus:outline-none"
+                          >
+                            <option value="simple-vector">SIMPLE VECTOR — $15 / file</option>
+                            <option value="complex-vector">COMPLEX VECTOR — $25 / file</option>
+                            <option value="advance-vector">ADVANCED VECTOR — $45 / file</option>
+                            <option value="color-separation">COLOR SEPARATION — $10 / separation</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-xs font-black uppercase text-zinc-900 mb-1.5" htmlFor="digitizingTier">
+                            Digitizing Size / Location <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            id="digitizingTier"
+                            value={formData.digitizingTier}
+                            onChange={(e) => setFormData({ ...formData, digitizingTier: e.target.value })}
+                            className="w-full px-3.5 py-2.5 rounded-lg bg-zinc-50 border border-zinc-300 text-zinc-900 text-sm font-bold focus:bg-white focus:border-black focus:outline-none"
+                          >
+                            <option value="left-chest-cap">LEFT CHEST &amp; CAP — $15 / design</option>
+                            <option value="mid-size">MID SIZE (5" to 8") — $25 / design</option>
+                            <option value="jacket-back">JACKET BACK (Full Scale) — $40 / design</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Quantity & Secondary Specs */}

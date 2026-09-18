@@ -212,6 +212,7 @@ function MainAppContent() {
 
             {currentPage === 'services' && (
               <ServicesPage
+                onOpenQuoteModal={openQuoteModal}
                 onSelectServiceForQuote={openQuoteModal}
                 onNavigate={navigateTo}
               />
@@ -219,6 +220,7 @@ function MainAppContent() {
 
             {currentPage === 'pricing' && (
               <PricingPage
+                onOpenQuoteModal={openQuoteModal}
                 onSelectTierForQuote={(tierName) => openQuoteModal('vector-artwork', '', tierName)}
                 onNavigate={navigateTo}
               />

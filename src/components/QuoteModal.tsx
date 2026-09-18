@@ -77,7 +77,12 @@ export const QuoteModal: React.FC<QuoteModalProps> = ({
           <QuoteSection
             defaultService={initialService}
             defaultTier={initialTier}
-            prefillNote={initialItem ? `Inquiry regarding portfolio design: "${initialItem}"` : ''}
+            packageName={initialItem}
+            prefillNote={
+              initialItem && !['simple vector', 'complex vector', 'advance vector', 'advanced vector', 'color separation', 'left chest & cap', 'mid size', 'jacket back'].some(pkg => initialItem.toLowerCase().includes(pkg))
+                ? `Inquiry regarding portfolio design: "${initialItem}"`
+                : ''
+            }
           />
         </div>
       </div>
