@@ -2813,6 +2813,8 @@ app.get(
     '/apple-touch-icon-precomposed.png',
     '/site.webmanifest',
     '/manifest.json',
+    '/robots.txt',
+    '/sitemap.xml',
   ],
   (req, res) => {
     const filename = path.basename(req.path);
@@ -2835,6 +2837,10 @@ app.get(
           res.setHeader('Content-Type', 'image/png');
         } else if (filename.endsWith('.webmanifest') || filename.endsWith('.json')) {
           res.setHeader('Content-Type', 'application/manifest+json');
+        } else if (filename.endsWith('.txt')) {
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        } else if (filename.endsWith('.xml')) {
+          res.setHeader('Content-Type', 'application/xml; charset=utf-8');
         }
         return res.sendFile(p);
       }
