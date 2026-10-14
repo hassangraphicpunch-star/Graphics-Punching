@@ -129,9 +129,11 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
         eventSource = new EventSource(
           `/api/site/events?role=visitor&conversationId=${encodeURIComponent(
             conversationId
-          )}&visitorId=${encodeURIComponent(visitorId)}`,
-          { withCredentials: true }
+          )}&visitorId=${encodeURIComponent(visitorId)}`
         );
+
+        eventSource.addEventListener('ping', () => {});
+
         eventSource.onmessage = (event) => {
           try {
             const packet = JSON.parse(event.data);
@@ -186,13 +188,18 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
         };
 
         eventSource.onerror = () => {
+          if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+            return;
+          }
           if (eventSource) {
-            eventSource.close();
+            try {
+              eventSource.close();
+            } catch {}
             eventSource = null;
           }
           if (isMounted) {
             clearTimeout(reconnectTimeout);
-            reconnectTimeout = setTimeout(connect, 5000);
+            reconnectTimeout = setTimeout(connect, 3000);
           }
         };
       } catch (e) {
@@ -260,7 +267,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
         const res = await fetch(
           `/api/chatbot/conversation?conversationId=${encodeURIComponent(
             conversationId
-          )}&_t=${Date.now()}`,
+          )}&visitorId=${encodeURIComponent(visitorId)}&_t=${Date.now()}`,
           { credentials: 'include', cache: 'no-store' }
         );
         if (res.ok) {

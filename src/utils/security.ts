@@ -7,6 +7,33 @@
 export const DEFAULT_AUTH_HASH = '2aa80d48ec9c53ebbede82543586325f29d5e6d5937bf9c0f8235c11a57f13a9';
 
 /**
+ * Returns current administrator authentication token (session or default)
+ */
+export function getAdminAuthToken(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const sessionHash = sessionStorage.getItem('gp_admin_auth_hash_v2');
+      if (sessionHash && sessionHash.length === 64) return sessionHash;
+      const localHash = localStorage.getItem('gp_admin_auth_hash_v2');
+      if (localHash && localHash.length === 64) return localHash;
+    }
+  } catch {}
+  return DEFAULT_AUTH_HASH;
+}
+
+/**
+ * Returns standard authentication headers for admin endpoints
+ */
+export function getAdminAuthHeaders(): Record<string, string> {
+  const token = getAdminAuthToken();
+  return {
+    'X-Admin-Auth': token,
+    'Authorization': `Bearer ${token}`,
+    'X-Admin-Portal': 'true',
+  };
+}
+
+/**
  * Synchronously computes the SHA-256 hash of a string.
  */
 export function computeHashSync(ascii: string): string {

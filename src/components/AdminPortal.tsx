@@ -64,7 +64,21 @@ export const AdminPortal: React.FC = () => {
 
   const [activeMainSection, setActiveMainSection] = useState<
     'settings' | 'live-chat' | 'chatbot' | 'history' | 'contacts'
-  >('settings');
+  >(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const hash = window.location.hash.toLowerCase();
+        const search = window.location.search.toLowerCase();
+        if (hash.includes('chat') || search.includes('chat') || hash.includes('live') || search.includes('live') || hash.includes('inbox')) {
+          return 'live-chat';
+        }
+        if (hash.includes('contacts') || search.includes('contacts')) return 'contacts';
+        if (hash.includes('history') || search.includes('history')) return 'history';
+        if (hash.includes('email') || search.includes('email')) return 'chatbot';
+      }
+    } catch {}
+    return 'settings';
+  });
   const [publishFeedback, setPublishFeedback] = useState<string | null>(null);
   const [permissionPromptDismissed, setPermissionPromptDismissed] = useState<boolean>(() => {
     try {

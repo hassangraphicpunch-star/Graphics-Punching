@@ -969,10 +969,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
 
       try {
         eventSource = new EventSource(
-          `/api/site/events?role=admin&auth=${encodeURIComponent(DEFAULT_AUTH_HASH)}`,
-          {
-            withCredentials: true,
-          }
+          `/api/site/events?role=admin&auth=${encodeURIComponent(DEFAULT_AUTH_HASH)}`
         );
 
         eventSource.onopen = () => {
@@ -981,6 +978,12 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
           setSseError(null);
           setSyncStatus((prev) => (prev === 'offline' || prev === 'error' ? 'synced' : prev));
         };
+
+        eventSource.addEventListener('ping', () => {
+          if (!isMounted) return;
+          setSseStatus('connected');
+          setSseError(null);
+        });
 
         eventSource.onmessage = (event) => {
           if (!isMounted) return;
@@ -1097,23 +1100,31 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         };
 
-        eventSource.onerror = () => {
+        eventSource.onerror = (err) => {
           if (!isMounted) return;
+          console.warn('[SSE] EventSource interrupted, readyState:', eventSource?.readyState, err);
+          if (eventSource && eventSource.readyState === EventSource.CONNECTING) {
+            setSseStatus('connecting');
+            setSseError('Real-time connection reconnecting...');
+            return;
+          }
           setSseStatus('connecting');
           setSseError('Real-time connection interrupted. Reconnecting...');
           if (eventSource) {
-            eventSource.close();
+            try {
+              eventSource.close();
+            } catch {}
             eventSource = null;
           }
           clearTimeout(reconnectTimeout);
-          reconnectTimeout = setTimeout(connectSse, 3500);
+          reconnectTimeout = setTimeout(connectSse, 2500);
         };
       } catch (e: any) {
         if (!isMounted) return;
         setSseStatus('error');
         setSseError(e?.message || 'Failed to initialize real-time event stream');
         clearTimeout(reconnectTimeout);
-        reconnectTimeout = setTimeout(connectSse, 4000);
+        reconnectTimeout = setTimeout(connectSse, 3500);
       }
     };
 
@@ -1319,6 +1330,12 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsAdminAuthenticated(true);
       try {
         sessionStorage.setItem(STORAGE_KEYS.AUTH, 'true');
+        sessionStorage.setItem(STORAGE_KEYS.AUTH_HASH, inputHash);
+        localStorage.setItem(STORAGE_KEYS.AUTH_HASH, inputHash);
+        if (typeof document !== 'undefined') {
+          document.cookie = `gp_admin_auth=true; path=/; max-age=2592000; SameSite=Lax`;
+          document.cookie = `gp_admin_token=${inputHash}; path=/; max-age=2592000; SameSite=Lax`;
+        }
       } catch {}
       return true;
     }
@@ -1329,6 +1346,10 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsAdminAuthenticated(false);
     try {
       sessionStorage.removeItem(STORAGE_KEYS.AUTH);
+      if (typeof document !== 'undefined') {
+        document.cookie = `gp_admin_auth=; path=/; max-age=0; SameSite=Lax`;
+        document.cookie = `gp_admin_token=; path=/; max-age=0; SameSite=Lax`;
+      }
     } catch {}
   };
 

@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { ChatConversation, ChatMessageItem } from '../../types/chat';
 import { useWebsiteSettings } from '../../context/AdminSettingsContext';
+import { getAdminAuthHeaders, DEFAULT_AUTH_HASH } from '../../utils/security';
 
 interface LiveVisitorChatInboxProps {
   onComposeTo?: (email: string, name: string) => void;
@@ -39,6 +40,7 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
   const {
     sseStatus,
     sseError,
+    reconnectSse,
     subscribeToRealtimeEvents,
     soundEnabled,
     toggleSound,
@@ -58,6 +60,8 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
   const [isLoading, setIsLoading] = useState(true);
   const [lastNotification, setLastNotification] = useState<{ title: string; text: string } | null>(null);
 
+  const [replyError, setReplyError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const playedMessageIdsRef = useRef<Set<string>>(new Set());
 
@@ -72,10 +76,18 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
       setIsLoading(true);
     }
     try {
-      const res = await fetch(`/api/chatbot/conversations?_t=${Date.now()}`, {
-        credentials: 'include',
-        cache: 'no-store',
-      });
+      const authHeaders = getAdminAuthHeaders();
+      const res = await fetch(
+        `/api/chatbot/conversations?_t=${Date.now()}&auth=${encodeURIComponent(DEFAULT_AUTH_HASH)}`,
+        {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: {
+            ...authHeaders,
+            'Cache-Control': 'no-cache, no-store',
+          },
+        }
+      );
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.conversations)) {
@@ -125,12 +137,12 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     }
   };
 
-  // Initial load and continuous 3-second background polling fallback
+  // Initial load and continuous 3.5-second background polling fallback
   useEffect(() => {
     fetchConversations(false);
     const interval = setInterval(() => {
       fetchConversations(true);
-    }, 3000);
+    }, 3500);
     return () => clearInterval(interval);
   }, []);
 
@@ -238,10 +250,14 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
     status: 'open' | 'in_progress' | 'resolved' | 'archived'
   ) => {
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/chatbot/status', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({ conversationId: convId, status }),
       });
       if (res.ok) {
@@ -270,12 +286,17 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
     const messageContent = replyText.trim();
     setIsSendingReply(true);
+    setReplyError(null);
 
     try {
+      const authHeaders = getAdminAuthHeaders();
       const res = await fetch('/api/chatbot/reply', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({
           conversationId: selectedConversation.id,
           replyText: messageContent,
@@ -292,10 +313,12 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
         }
         setReplyText('');
       } else {
-        alert('Could not dispatch message to visitor. Please verify your connection.');
+        const errData = await res.json().catch(() => null);
+        setReplyError(errData?.error || 'Could not dispatch reply to visitor. Please verify your connection.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error sending admin reply:', err);
+      setReplyError(err?.message || 'Network error sending admin reply.');
     } finally {
       setIsSendingReply(false);
     }
@@ -304,10 +327,14 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
   // Archive / Clear conversation
   const handleArchive = async (convId: string, action: 'archive' | 'delete' = 'archive') => {
     try {
+      const authHeaders = getAdminAuthHeaders();
       await fetch('/api/chatbot/clear-or-archive', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({ conversationId: convId, action }),
       });
       if (action === 'delete') {
@@ -546,12 +573,39 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
               </span>
             </button>
 
+            {/* Real-time Connection Status Indicator */}
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs font-bold">
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                sseStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
+                sseStatus === 'connecting' ? 'bg-amber-400 animate-spin' :
+                'bg-red-400'
+              }`} />
+              <span className={
+                sseStatus === 'connected' ? 'text-emerald-400' :
+                sseStatus === 'connecting' ? 'text-amber-400' :
+                'text-red-400'
+              }>
+                {sseStatus === 'connected' ? 'Connected' : sseStatus === 'connecting' ? 'Reconnecting...' : 'Offline'}
+              </span>
+              {sseStatus !== 'connected' && (
+                <button
+                  type="button"
+                  onClick={() => reconnectSse()}
+                  className="ml-1 text-[10px] text-zinc-400 hover:text-white underline cursor-pointer"
+                  title="Reconnect real-time stream"
+                >
+                  Reconnect
+                </button>
+              )}
+            </div>
+
             <button
               onClick={() => fetchConversations()}
               className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+              title="Manually fetch latest messages from persistent backend database"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span className="hidden md:inline">Refresh</span>
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">Refresh Inbox</span>
             </button>
           </div>
         </div>
@@ -954,6 +1008,21 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
                 {/* Live Administrator Reply Composer */}
                 <form onSubmit={handleSendReply} className="p-4 bg-zinc-950 border-t border-zinc-800">
+                  {replyError && (
+                    <div className="mb-3 p-2.5 rounded-xl bg-red-950/80 border border-red-800/80 text-red-300 text-xs font-medium flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                        <span>{replyError}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReplyError(null)}
+                        className="text-red-400 hover:text-white text-xs cursor-pointer px-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-end gap-3">
                     <div className="flex-1 relative">
                       <textarea
