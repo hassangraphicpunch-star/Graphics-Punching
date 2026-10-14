@@ -110,6 +110,32 @@
   "portfolioItems": [],
   "leads": [
     {
+      "id": "lead-chat-conv-mv7cta8u-g781rad",
+      "name": "Alex Mercer",
+      "email": "alex.mercer@apexbrand.com",
+      "phone": "",
+      "company": "",
+      "serviceInterested": "Embroidery Digitizing / Vector Art",
+      "projectDetails": "Inquiry via 24/7 AI Chatbot: \"Hello, need an embroidery digitizing quote for 50 caps.\"",
+      "date": "2026-10-14T00:10:47.455Z",
+      "status": "new",
+      "source": "AI Chatbot (visitor-kmhakkw)",
+      "estimateTotal": null
+    },
+    {
+      "id": "lead-chat-conv-mv7ct2f0-rt9l3e2",
+      "name": "Alex Mercer",
+      "email": "",
+      "phone": "",
+      "company": "",
+      "serviceInterested": "Embroidery Digitizing / Vector Art",
+      "projectDetails": "Inquiry via 24/7 AI Chatbot: \"Hi, I need a rush quote for 3D puff embroidery on caps. 500 pieces.\"",
+      "date": "2026-10-14T00:10:37.318Z",
+      "status": "new",
+      "source": "AI Chatbot (visitor-7gwly5t)",
+      "estimateTotal": null
+    },
+    {
       "id": "lead-chat-test-solve-conv-1",
       "name": "Visitor Test",
       "email": "",
@@ -137,6 +163,38 @@
     }
   ],
   "emailLogs": [
+    {
+      "id": "log-1791936648168-hs8e",
+      "trackingId": "GP-CHAT-MV7CTA8V-8IH",
+      "to": "graphicspunching264@gmail.com",
+      "recipientName": "Administrator",
+      "from": "Punchy AI <graphicspunching264@gmail.com>",
+      "replyTo": "alex.mercer@apexbrand.com",
+      "subject": "[Live Chat] Alex Mercer: \"Hello, need an embroidery digitizing quo...\"",
+      "body": "======================================================================\nGRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY\n======================================================================\n\nVISITOR: Alex Mercer\nEMAIL: alex.mercer@apexbrand.com\nPHONE: None provided\nCONVERSATION ID: conv-mv7cta8u-g781rad\nMESSAGE TIME: 2026-10-14T00:10:47.455Z\n\nMESSAGE:\n\"Hello, need an embroidery digitizing quote for 50 caps.\"\n\n\n\nGraphics Punching 24/7 Production & Live Chat Desk\ngraphicspunching264@gmail.com | +1 (607) 205-0030\n======================================================================",
+      "attachments": [],
+      "status": "failed",
+      "sentAt": "2026-10-14T00:10:48.168Z",
+      "providerMessageId": null,
+      "error": "Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to\n535 5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-3ac6006376bsm1682752a91.3 - gsmtp",
+      "thread": []
+    },
+    {
+      "id": "log-1791936638767-pcuq",
+      "trackingId": "GP-CHAT-MV7CT2FA-W6J",
+      "to": "graphicspunching264@gmail.com",
+      "recipientName": "Administrator",
+      "from": "Punchy AI <graphicspunching264@gmail.com>",
+      "replyTo": "graphicspunching264@gmail.com",
+      "subject": "[Live Chat] Alex Mercer: \"Hi, I need a rush quote for 3D puff embr...\"",
+      "body": "======================================================================\nGRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY\n======================================================================\n\nVISITOR: Alex Mercer\nEMAIL: None provided\nPHONE: None provided\nCONVERSATION ID: conv-mv7ct2f0-rt9l3e2\nMESSAGE TIME: 2026-10-14T00:10:37.317Z\n\nMESSAGE:\n\"Hi, I need a rush quote for 3D puff embroidery on caps. 500 pieces.\"\n\n\n\nGraphics Punching 24/7 Production & Live Chat Desk\ngraphicspunching264@gmail.com | +1 (607) 205-0030\n======================================================================",
+      "attachments": [],
+      "status": "failed",
+      "sentAt": "2026-10-14T00:10:38.767Z",
+      "providerMessageId": null,
+      "error": "Invalid login: 535-5.7.8 Username and Password not accepted. For more information, go to\n535 5.7.8  https://support.google.com/mail/?p=BadCredentials d2e1a72fcca58-89d804fab99sm416055b3a.46 - gsmtp",
+      "thread": []
+    },
     {
       "id": "log-1789245607323-p2mf",
       "trackingId": "GP-CHAT-MTYUMXA7-JJ6",
@@ -170,5 +228,5 @@
   ],
   "version": 33,
   "publishedAt": "2026-09-15T00:27:32.380Z",
-  "publishNote": "Technical audit production verification"
+  "publishNote": ""
 }

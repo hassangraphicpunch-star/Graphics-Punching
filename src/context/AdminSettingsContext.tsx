@@ -346,6 +346,25 @@ interface AdminSettingsContextType {
   resetToDefaults: () => void;
   exportSettingsJSON: () => string;
   importSettingsJSON: (jsonStr: string) => boolean;
+
+  // Live Chat & Real-Time Visitor Notifications
+  totalUnreadChatCount: number;
+  soundEnabled: boolean;
+  toggleSound: () => void;
+  playNotificationChime: () => void;
+  browserNotificationsEnabled: boolean;
+  browserNotificationPermission: NotificationPermission | 'unsupported';
+  requestBrowserNotificationPermission: () => Promise<boolean>;
+  latestVisitorChatAlert: {
+    visitorName: string;
+    text: string;
+    conversationId: string;
+    timestamp: string;
+  } | null;
+  clearLatestVisitorChatAlert: () => void;
+  markConversationReadLocally: (convId: string) => Promise<void>;
+  markConversationUnreadLocally: (convId: string) => Promise<void>;
+  reconnectSse: () => void;
 }
 
 const AdminSettingsContext = createContext<AdminSettingsContextType | null>(null);
@@ -549,6 +568,273 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [sseError, setSseError] = useState<string | null>(null);
   const realtimeListenersRef = useRef<Set<(event: any) => void>>(new Set());
 
+  // Real-Time Visitor Chat & Admin Notifications State
+  const [totalUnreadChatCount, setTotalUnreadChatCount] = useState<number>(0);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gp_chime_sound_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [browserNotificationsEnabled, setBrowserNotificationsEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gp_browser_notifications_enabled') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      return Notification.permission;
+    }
+    return 'unsupported';
+  });
+  const [latestVisitorChatAlert, setLatestVisitorChatAlert] = useState<{
+    visitorName: string;
+    text: string;
+    conversationId: string;
+    timestamp: string;
+  } | null>(null);
+
+  // Persistent record of already-notified message IDs to prevent duplicate alerts across reconnects / reloads
+  const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('gp_notified_msg_ids');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          arr.forEach((id: string) => notifiedMessageIdsRef.current.add(id));
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Web Audio API Notification Synthesizer (Crystal Chime: D5 -> A5 with Harmonious D6 Accents)
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const playNotificationChime = useCallback(() => {
+    if (!soundEnabled) return;
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtx();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const now = ctx.currentTime;
+      // Tone 1: 587.33 Hz (D5) rising to 880 Hz (A5)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now);
+      osc1.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      gain1.gain.setValueAtTime(0.22, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.39);
+
+      // Tone 2: Harmonious high sparkle 1174.66 Hz (D6) at 130ms
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(1174.66, now + 0.13);
+      gain2.gain.setValueAtTime(0.18, now + 0.13);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.13);
+      osc2.stop(now + 0.46);
+    } catch (e) {
+      console.warn('Audio chime playback omitted:', e);
+    }
+  }, [soundEnabled]);
+
+  // Audio unlock: Browser auto-play policy requires initial interaction to resume audio
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        if (!audioContextRef.current) {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioCtx) audioContextRef.current = new AudioCtx();
+        }
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume();
+        }
+      } catch {}
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+    window.addEventListener('click', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, []);
+
+  // Request browser notification permission explicitly
+  const requestBrowserNotificationPermission = useCallback(async (): Promise<boolean> => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotificationPermission('unsupported');
+      return false;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      setBrowserNotificationPermission(permission);
+      if (permission === 'granted') {
+        setBrowserNotificationsEnabled(true);
+        localStorage.setItem('gp_browser_notifications_enabled', 'true');
+        // Welcome notification
+        try {
+          new Notification('Graphics Punching • Admin Alerts Enabled', {
+            body: 'You will receive real-time notifications for customer inquiries even in other tabs.',
+            icon: '/favicon-192x192.png',
+          });
+        } catch {}
+        return true;
+      } else {
+        setBrowserNotificationsEnabled(false);
+        localStorage.setItem('gp_browser_notifications_enabled', 'false');
+        return false;
+      }
+    } catch (e) {
+      console.warn('Notification permission error:', e);
+      return false;
+    }
+  }, []);
+
+  const triggerBrowserNotification = useCallback((visitorName: string, messageText: string, conversationId: string) => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted' || !browserNotificationsEnabled) return;
+
+    try {
+      const notif = new Notification(`💬 Customer Message: ${visitorName}`, {
+        body: messageText.length > 90 ? messageText.slice(0, 87) + '...' : messageText,
+        icon: '/favicon-192x192.png',
+        tag: `gp-chat-${conversationId}`,
+      });
+      notif.onclick = () => {
+        window.focus();
+        window.location.hash = '#/admin';
+        notif.close();
+      };
+    } catch (e) {
+      console.warn('Browser notification trigger failed:', e);
+    }
+  }, [browserNotificationsEnabled]);
+
+  const toggleSound = useCallback(() => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('gp_chime_sound_enabled', String(next));
+      if (next) playNotificationChime();
+      return next;
+    });
+  }, [playNotificationChime]);
+
+  const clearLatestVisitorChatAlert = useCallback(() => {
+    setLatestVisitorChatAlert(null);
+  }, []);
+
+  const markConversationReadLocally = useCallback(async (convId: string) => {
+    try {
+      const res = await fetch('/api/chatbot/mark-read', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Auth': DEFAULT_AUTH_HASH,
+        },
+        body: JSON.stringify({ conversationId: convId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && typeof data.totalUnread === 'number') {
+          setTotalUnreadChatCount(data.totalUnread);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to mark read locally:', e);
+    }
+  }, []);
+
+  const markConversationUnreadLocally = useCallback(async (convId: string) => {
+    try {
+      const res = await fetch('/api/chatbot/mark-unread', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Auth': DEFAULT_AUTH_HASH,
+        },
+        body: JSON.stringify({ conversationId: convId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && typeof data.totalUnread === 'number') {
+          setTotalUnreadChatCount(data.totalUnread);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to mark unread locally:', e);
+    }
+  }, []);
+
+  // Fetch initial unread chat count & index existing messages
+  const fetchUnreadChatCount = useCallback(async () => {
+    try {
+      const res = await fetch('/api/chatbot/conversations?_t=' + Date.now(), {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: {
+          'X-Admin-Auth': DEFAULT_AUTH_HASH,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && typeof data.totalUnread === 'number') {
+          setTotalUnreadChatCount(data.totalUnread);
+          if (Array.isArray(data.conversations)) {
+            data.conversations.forEach((c: any) => {
+              if (Array.isArray(c.messages)) {
+                c.messages.forEach((m: any) => {
+                  if (m.id) notifiedMessageIdsRef.current.add(m.id);
+                });
+              }
+            });
+            try {
+              const idsArr = Array.from(notifiedMessageIdsRef.current).slice(-500);
+              localStorage.setItem('gp_notified_msg_ids', JSON.stringify(idsArr));
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchUnreadChatCount();
+    const interval = setInterval(fetchUnreadChatCount, 8000);
+    return () => clearInterval(interval);
+  }, [fetchUnreadChatCount]);
+
+  // Tab Title Alert Handler
+  useEffect(() => {
+    const baseTitle = 'Graphics Punching | Master-Crafted Vector Art & Digitizing';
+    if (totalUnreadChatCount > 0) {
+      document.title = `(${totalUnreadChatCount}) 💬 ${baseTitle}`;
+    } else {
+      document.title = baseTitle;
+    }
+  }, [totalUnreadChatCount]);
+
   const subscribeToRealtimeEvents = useCallback((listener: (event: any) => void) => {
     realtimeListenersRef.current.add(listener);
     return () => {
@@ -665,7 +951,13 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, [syncFromServer]);
 
-  // 2. Real-Time Server-Sent Events (SSE) Listener for Live Updates
+  // Reconnection trigger state for manual or programmatic reconnect
+  const [reconnectCounter, setReconnectCounter] = useState(0);
+  const reconnectSse = useCallback(() => {
+    setReconnectCounter((prev) => prev + 1);
+  }, []);
+
+  // 2. Real-Time Server-Sent Events (SSE) Listener for Live Updates & Visitor Chat
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let reconnectTimeout: any = null;
@@ -676,9 +968,12 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       setSseStatus((prev) => (prev === 'connected' ? 'connected' : 'connecting'));
 
       try {
-        eventSource = new EventSource('/api/site/events?role=admin', {
-          withCredentials: true,
-        });
+        eventSource = new EventSource(
+          `/api/site/events?role=admin&auth=${encodeURIComponent(DEFAULT_AUTH_HASH)}`,
+          {
+            withCredentials: true,
+          }
+        );
 
         eventSource.onopen = () => {
           if (!isMounted) return;
@@ -750,6 +1045,41 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
                   (e) => e.id !== packet.emailLog.id && e.trackingId !== packet.emailLog.trackingId
                 ),
               ]);
+            } else if (packet.type === 'chatbot_conversation_update') {
+              if (typeof packet.totalUnread === 'number') {
+                setTotalUnreadChatCount(packet.totalUnread);
+              }
+              const newMsg = packet.newMessage;
+              if (newMsg?.role === 'user') {
+                const msgId = newMsg.id || `msg-${Date.now()}`;
+                if (!notifiedMessageIdsRef.current.has(msgId)) {
+                  notifiedMessageIdsRef.current.add(msgId);
+                  try {
+                    const idsArr = Array.from(notifiedMessageIdsRef.current).slice(-500);
+                    localStorage.setItem('gp_notified_msg_ids', JSON.stringify(idsArr));
+                  } catch {}
+
+                  // Play sound notification immediately
+                  playNotificationChime();
+
+                  // Trigger system browser notification
+                  const visitorName = packet.conversation?.visitorName || 'Website Visitor';
+                  const textPreview = newMsg.content || 'Sent a new message';
+                  triggerBrowserNotification(visitorName, textPreview, packet.conversationId || packet.conversation?.id || '');
+
+                  // Trigger in-app visual notification alert banner
+                  setLatestVisitorChatAlert({
+                    visitorName,
+                    text: textPreview,
+                    conversationId: packet.conversationId || packet.conversation?.id || '',
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  });
+                }
+              }
+            } else if (packet.type === 'chatbot_unread_update') {
+              if (typeof packet.totalUnread === 'number') {
+                setTotalUnreadChatCount(packet.totalUnread);
+              }
             } else if (packet.type === 'reset_to_defaults') {
               syncFromServer();
             }
@@ -794,7 +1124,7 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       if (eventSource) eventSource.close();
       clearTimeout(reconnectTimeout);
     };
-  }, [syncFromServer]);
+  }, [syncFromServer, playNotificationChime, triggerBrowserNotification, reconnectCounter]);
 
   // Publish to Live Website Action
   const publishToLive = async (options?: { quiet?: boolean; note?: string }): Promise<{ success: boolean; message: string; publishedAt?: string }> => {
@@ -1301,6 +1631,20 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       resetToDefaults,
       exportSettingsJSON,
       importSettingsJSON,
+
+      // Live Chat Notifications
+      totalUnreadChatCount,
+      soundEnabled,
+      toggleSound,
+      playNotificationChime,
+      browserNotificationsEnabled,
+      browserNotificationPermission,
+      requestBrowserNotificationPermission,
+      latestVisitorChatAlert,
+      clearLatestVisitorChatAlert,
+      markConversationReadLocally,
+      markConversationUnreadLocally,
+      reconnectSse,
     }),
     [
       settings,
@@ -1321,6 +1665,18 @@ export const AdminSettingsProvider: React.FC<{ children: React.ReactNode }> = ({
       publishToLive,
       toggleAutoPublishLive,
       syncFromServer,
+      totalUnreadChatCount,
+      soundEnabled,
+      toggleSound,
+      playNotificationChime,
+      browserNotificationsEnabled,
+      browserNotificationPermission,
+      requestBrowserNotificationPermission,
+      latestVisitorChatAlert,
+      clearLatestVisitorChatAlert,
+      markConversationReadLocally,
+      markConversationUnreadLocally,
+      reconnectSse,
     ]
   );
 

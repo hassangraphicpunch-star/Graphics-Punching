@@ -19,6 +19,11 @@ import {
   Radio,
   Loader2,
   MessageSquare,
+  Volume2,
+  VolumeX,
+  Bell,
+  BellRing,
+  AlertTriangle,
 } from 'lucide-react';
 import { useWebsiteSettings } from '../context/AdminSettingsContext';
 import { AdminAuthGate } from './admin/AdminAuthGate';
@@ -43,6 +48,15 @@ export const AdminPortal: React.FC = () => {
     syncStatus,
     sseStatus,
     sseError,
+    reconnectSse,
+    totalUnreadChatCount,
+    soundEnabled,
+    toggleSound,
+    browserNotificationsEnabled,
+    browserNotificationPermission,
+    requestBrowserNotificationPermission,
+    latestVisitorChatAlert,
+    clearLatestVisitorChatAlert,
     subscribeToRealtimeEvents,
     publishToLive,
     syncFromServer,
@@ -52,61 +66,13 @@ export const AdminPortal: React.FC = () => {
     'settings' | 'live-chat' | 'chatbot' | 'history' | 'contacts'
   >('settings');
   const [publishFeedback, setPublishFeedback] = useState<string | null>(null);
-  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
-  const [incomingChatAlert, setIncomingChatAlert] = useState<{
-    visitorName: string;
-    text: string;
-  } | null>(null);
-
-  // Synchronize unread chat count in real time via context events & periodic fallback check
-  useEffect(() => {
-    let isMounted = true;
-
-    // 1. Polling function for unread count
-    const checkUnreadCount = async () => {
-      try {
-        const r = await fetch('/api/chatbot/conversations?_t=' + Date.now(), {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        if (r.ok) {
-          const d = await r.json();
-          if (isMounted && d.success && typeof d.totalUnread === 'number') {
-            setUnreadChatCount(d.totalUnread);
-          }
-        }
-      } catch {}
-    };
-
-    checkUnreadCount();
-    const interval = setInterval(checkUnreadCount, 8000);
-
-    // 2. Real-time subscriber to centralized stream
-    const unsubscribe = subscribeToRealtimeEvents((packet) => {
-      if (packet.type === 'chatbot_conversation_update') {
-        if (typeof packet.totalUnread === 'number') {
-          setUnreadChatCount(packet.totalUnread);
-        }
-        if (packet.newMessage?.role === 'user') {
-          setIncomingChatAlert({
-            visitorName: packet.conversation?.visitorName || 'Website Visitor',
-            text: packet.newMessage.content?.slice(0, 100) || 'Sent a new message',
-          });
-          setTimeout(() => setIncomingChatAlert(null), 8000);
-        }
-      } else if (packet.type === 'chatbot_unread_update') {
-        if (typeof packet.totalUnread === 'number') {
-          setUnreadChatCount(packet.totalUnread);
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-      unsubscribe();
-    };
-  }, [subscribeToRealtimeEvents]);
+  const [permissionPromptDismissed, setPermissionPromptDismissed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('gp_notif_prompt_dismissed') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const handleManualPublish = async () => {
     const res = await publishToLive({ note: 'Manual publish via Admin Command Portal' });
@@ -230,6 +196,21 @@ export const AdminPortal: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
+              {/* Sound Chime Toggle */}
+              <button
+                type="button"
+                onClick={toggleSound}
+                title={soundEnabled ? 'Chime sound is active' : 'Chime sound is muted'}
+                className={`p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                  soundEnabled
+                    ? 'bg-zinc-900 border-zinc-700 text-[#FFC400]'
+                    : 'bg-zinc-950 border-zinc-800 text-zinc-500'
+                }`}
+              >
+                {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{soundEnabled ? 'Chime ON' : 'Chime Muted'}</span>
+              </button>
+
               {/* Auto-Publish Toggle */}
               <button
                 type="button"
@@ -282,24 +263,97 @@ export const AdminPortal: React.FC = () => {
             </div>
           </div>
 
-          {incomingChatAlert && (
-            <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-400 text-xs text-white font-bold flex items-center justify-between gap-3 animate-bounce shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+          {/* Desktop Browser Notification Opt-In Banner */}
+          {browserNotificationPermission !== 'granted' && browserNotificationPermission !== 'unsupported' && !permissionPromptDismissed && (
+            <div className="p-3 sm:p-4 rounded-2xl bg-zinc-900/95 border border-[#FFC400]/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-[#FFC400]/15 border border-[#FFC400]/40 text-[#FFC400] flex items-center justify-center shrink-0">
+                  <BellRing className="w-4 h-4 animate-bounce" />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-white uppercase tracking-wider">
+                    Enable Real-Time Desktop Alerts
+                  </p>
+                  <p className="text-xs text-zinc-400">
+                    Receive instantaneous notifications when customers send messages through Punchy AI, even in other tabs or apps.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await requestBrowserNotificationPermission();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#FFC400] hover:bg-[#ffcd1a] text-black text-xs font-black uppercase tracking-wider transition-all cursor-pointer shadow-md"
+                >
+                  Enable Alerts
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPermissionPromptDismissed(true);
+                    try {
+                      sessionStorage.setItem('gp_notif_prompt_dismissed', 'true');
+                    } catch {}
+                  }}
+                  className="px-2.5 py-1.5 text-xs text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Real-Time Disconnect Alert Banner */}
+          {sseStatus !== 'connected' && (
+            <div className="p-3 rounded-2xl bg-red-950/40 border border-red-500/50 text-xs text-white font-bold flex items-center justify-between gap-3 shadow-lg">
               <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 animate-pulse" />
                 <span>
-                  <strong>⚡ Live Visitor Message:</strong> {incomingChatAlert.visitorName}: &ldquo;{incomingChatAlert.text}&rdquo;
+                  <strong>Real-time event stream interrupted:</strong> {sseError || 'Attempting to reconnect...'}
                 </span>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setActiveMainSection('live-chat');
-                  setIncomingChatAlert(null);
-                }}
-                className="px-3 py-1 rounded-xl bg-[#FFC400] text-black font-black text-[11px] uppercase tracking-wider hover:bg-[#ffd233] shrink-0 cursor-pointer"
+                onClick={reconnectSse}
+                className="px-3 py-1 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black text-[11px] uppercase tracking-wider shrink-0 cursor-pointer flex items-center gap-1"
               >
-                Open Chat Inbox →
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>Reconnect Now</span>
               </button>
+            </div>
+          )}
+
+          {/* Incoming Customer Message Alert Banner */}
+          {latestVisitorChatAlert && (
+            <div className="p-3 rounded-2xl bg-amber-500/20 border border-amber-400 text-xs text-white font-bold flex items-center justify-between gap-3 animate-bounce shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping shrink-0" />
+                <span className="truncate">
+                  <strong>⚡ Live Message from {latestVisitorChatAlert.visitorName} ({latestVisitorChatAlert.timestamp}):</strong> &ldquo;{latestVisitorChatAlert.text}&rdquo;
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveMainSection('live-chat');
+                    clearLatestVisitorChatAlert();
+                  }}
+                  className="px-3 py-1 rounded-xl bg-[#FFC400] text-black font-black text-[11px] uppercase tracking-wider hover:bg-[#ffd233] shrink-0 cursor-pointer"
+                >
+                  Open Chat Inbox →
+                </button>
+                <button
+                  type="button"
+                  onClick={clearLatestVisitorChatAlert}
+                  className="p-1 text-zinc-400 hover:text-white cursor-pointer"
+                  aria-label="Dismiss alert"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
 
@@ -325,7 +379,7 @@ export const AdminPortal: React.FC = () => {
               label: 'Visitor AI Chat & Live Desk',
               icon: MessageSquare,
               desc: 'Real-time visitor messages, quick replies & live 2-way desk',
-              badge: unreadChatCount > 0 ? `${unreadChatCount} NEW` : undefined,
+              badge: totalUnreadChatCount > 0 ? `${totalUnreadChatCount}` : undefined,
             },
             {
               id: 'chatbot',
@@ -386,7 +440,7 @@ export const AdminPortal: React.FC = () => {
                             : 'bg-red-500 text-white animate-pulse'
                         }`}
                       >
-                        {tab.badge} NEW
+                        {tab.badge} UNREAD
                       </span>
                     )}
                   </div>
@@ -412,7 +466,7 @@ export const AdminPortal: React.FC = () => {
           {activeMainSection === 'chatbot' && (
             <EmailChatbotWorkspace
               onOpenLiveChat={() => setActiveMainSection('live-chat')}
-              unreadChatCount={unreadChatCount}
+              unreadChatCount={totalUnreadChatCount}
             />
           )}
           {activeMainSection === 'history' && (

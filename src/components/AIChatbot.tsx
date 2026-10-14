@@ -17,7 +17,8 @@ import {
   Layers,
   ChevronDown,
   Mail,
-  Check
+  Check,
+  AlertCircle,
 } from 'lucide-react';
 import { useAdminSettings } from '../context/AdminSettingsContext';
 
@@ -26,6 +27,7 @@ interface ChatMessage {
   role: 'assistant' | 'user';
   content: string;
   timestamp: string;
+  status?: 'sending' | 'sent' | 'failed';
   suggestedAction?: {
     type: string;
     label: string;
@@ -49,10 +51,12 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
 
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
   const [showTooltip, setShowTooltip] = useState(true);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [notificationToast, setNotificationToast] = useState<{ show: boolean; text: string } | null>(null);
 
   const [visitorId] = useState<string>(() => {
@@ -416,19 +420,24 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
     sourceType: 'user_message' | 'quick_reply' = 'user_message'
   ) => {
     const text = (textToSend !== undefined ? textToSend : inputMessage).trim();
-    if (!text || isLoading) return;
+    if (!text || isLoading || isSubmittingRef.current) return;
 
+    isSubmittingRef.current = true;
+    const userMessageId = `user-${Date.now()}`;
     const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: userMessageId,
       role: 'user',
       content: text,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      status: 'sending',
     };
 
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInputMessage('');
     setIsLoading(true);
+
+    let messagePostedSuccessfully = false;
 
     // 1. Immediately persist visitor message to server real-time chat store with retry
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -438,6 +447,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            id: userMessageId,
             conversationId,
             visitorId,
             visitorName: `Visitor #${visitorId.slice(-4).toUpperCase()}`,
@@ -453,19 +463,33 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
             },
           }),
         });
-        if (postRes.ok) break;
+        if (postRes.ok) {
+          messagePostedSuccessfully = true;
+          setMessages((prev) =>
+            prev.map((m) => (m.id === userMessageId ? { ...m, status: 'sent' } : m))
+          );
+          break;
+        }
       } catch (postErr) {
         if (attempt === 2) console.warn('Could not post chat message after 3 attempts:', postErr);
         await new Promise((resolve) => setTimeout(resolve, 400));
       }
     }
 
-    // 2. Automatically send notification email to administrator
-    notifyAdminOfInteraction({
-      selectedInquiry: text,
-      eventType: sourceType,
-      conversationSnapshot: newMessages,
-    });
+    if (!messagePostedSuccessfully) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === userMessageId ? { ...m, status: 'failed' } : m))
+      );
+    }
+
+    // 2. Automatically send notification email to administrator for special interaction events
+    if (sourceType !== 'user_message') {
+      notifyAdminOfInteraction({
+        selectedInquiry: text,
+        eventType: sourceType,
+        conversationSnapshot: newMessages,
+      });
+    }
 
     try {
       // Build request payload for backend endpoint
@@ -553,6 +577,7 @@ export const AIChatbot: React.FC<AIChatbotProps> = ({ onOpenQuoteModal, onNaviga
       }).catch(() => {});
     } finally {
       setIsLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
@@ -837,6 +862,8 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
           className={`bg-zinc-950/98 backdrop-blur-xl border border-zinc-800 shadow-[0_20px_60px_rgba(0,0,0,0.85)] rounded-2xl sm:rounded-3xl flex flex-col overflow-hidden transition-all duration-300 ${
             isMinimized
               ? 'w-72 sm:w-80 h-16'
+              : isMaximized
+              ? 'w-[calc(100vw-24px)] sm:w-[580px] md:w-[680px] h-[720px] max-h-[calc(100vh-40px)]'
               : 'w-[calc(100vw-32px)] sm:w-[410px] md:w-[440px] h-[580px] max-h-[calc(100vh-100px)]'
           }`}
         >
@@ -882,7 +909,7 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
               <button
                 type="button"
                 onClick={handleResetChat}
-                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
                 title="Restart conversation"
                 aria-label="Restart chat"
               >
@@ -891,18 +918,33 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
 
               <button
                 type="button"
-                onClick={() => setIsMinimized(!isMinimized)}
-                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                onClick={() => {
+                  setIsMinimized(!isMinimized);
+                  if (isMaximized) setIsMaximized(false);
+                }}
+                className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
                 title={isMinimized ? 'Expand' : 'Minimize'}
                 aria-label={isMinimized ? 'Expand chat' : 'Minimize chat'}
               >
-                {isMinimized ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
+                <Minimize2 className="w-3.5 h-3.5" />
               </button>
+
+              {!isMinimized && (
+                <button
+                  type="button"
+                  onClick={() => setIsMaximized(!isMaximized)}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+                  title={isMaximized ? 'Restore size' : 'Maximize window'}
+                  aria-label={isMaximized ? 'Restore window' : 'Maximize window'}
+                >
+                  {isMaximized ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                </button>
+              )}
 
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
                 title="Close chat"
                 aria-label="Close chat"
               >
@@ -989,9 +1031,41 @@ Feel free to ask about our file formats, turnarounds, or request a quick estimat
                         </div>
                       </div>
 
-                      <span className="text-[9px] text-zinc-500 mt-1 px-1">
-                        {msg.timestamp}
-                      </span>
+                      <div className="flex items-center gap-1.5 text-[9px] text-zinc-500 mt-1 px-1">
+                        <span>{msg.timestamp}</span>
+                        {msg.role === 'user' && (
+                          <>
+                            {msg.status === 'sending' && (
+                              <span className="flex items-center gap-1 text-amber-400 font-bold">
+                                <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                <span>Sending</span>
+                              </span>
+                            )}
+                            {msg.status === 'sent' && (
+                              <span className="flex items-center text-emerald-400 font-bold" title="Delivered to support desk">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>Sent</span>
+                              </span>
+                            )}
+                            {msg.status === 'failed' && (
+                              <span className="flex items-center gap-1 text-red-400 font-bold">
+                                <AlertCircle className="w-2.5 h-2.5" />
+                                <span>Failed</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSendMessage(msg.content);
+                                  }}
+                                  className="underline text-red-300 hover:text-white cursor-pointer ml-0.5"
+                                >
+                                  Retry
+                                </button>
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

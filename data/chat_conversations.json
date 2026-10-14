@@ -1,5 +1,66 @@
 [
   {
+    "id": "conv-mv7cta8u-g781rad",
+    "visitorId": "visitor-kmhakkw",
+    "visitorName": "Alex Mercer",
+    "visitorEmail": "alex.mercer@apexbrand.com",
+    "visitorPhone": "",
+    "startedAt": "2026-10-14T00:10:47.454Z",
+    "lastUpdatedAt": "2026-10-14T18:15:38.705Z",
+    "status": "in_progress",
+    "unreadForAdmin": 0,
+    "unreadForVisitor": 1,
+    "lastMessage": "[Admin] Hi Alex! Cap embroidery digitizing is $15 flat rate with 12-24h turnaround. Please upload your logo file.",
+    "lastEventType": "admin_reply",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-mv7cta8u-vme985v",
+        "role": "user",
+        "senderName": "Alex Mercer",
+        "content": "Hello, need an embroidery digitizing quote for 50 caps.",
+        "type": "user_message",
+        "timestamp": "12:10 AM",
+        "createdAt": "2026-10-14T00:10:47.455Z"
+      },
+      {
+        "id": "msg-mv7ctmib-xflaq3c",
+        "role": "admin",
+        "senderName": "Graphics Punching Support",
+        "content": "Hi Alex! Cap embroidery digitizing is $15 flat rate with 12-24h turnaround. Please upload your logo file.",
+        "type": "admin_reply",
+        "timestamp": "12:11 AM",
+        "createdAt": "2026-10-14T00:11:03.348Z"
+      }
+    ]
+  },
+  {
+    "id": "conv-mv7ct2f0-rt9l3e2",
+    "visitorId": "visitor-7gwly5t",
+    "visitorName": "Alex Mercer",
+    "visitorEmail": "",
+    "visitorPhone": "",
+    "startedAt": "2026-10-14T00:10:37.308Z",
+    "lastUpdatedAt": "2026-10-14T00:10:37.317Z",
+    "status": "active",
+    "unreadForAdmin": 1,
+    "unreadForVisitor": 0,
+    "lastMessage": "Hi, I need a rush quote for 3D puff embroidery on caps. 500 pieces.",
+    "lastEventType": "user_message",
+    "sessionInfo": {},
+    "messages": [
+      {
+        "id": "msg-mv7ct2f1-o7mhju9",
+        "role": "user",
+        "senderName": "Alex Mercer",
+        "content": "Hi, I need a rush quote for 3D puff embroidery on caps. 500 pieces.",
+        "type": "user_message",
+        "timestamp": "12:10 AM",
+        "createdAt": "2026-10-14T00:10:37.317Z"
+      }
+    ]
+  },
+  {
     "id": "conv-mtys2wg8-c4c7bzj",
     "visitorId": "visitor-oynhwpa",
     "visitorName": "John Smith",

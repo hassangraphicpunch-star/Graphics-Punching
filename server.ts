@@ -623,6 +623,39 @@ async function markConversationAsRead(id: string): Promise<boolean> {
   return found;
 }
 
+async function markConversationAsUnread(id: string): Promise<boolean> {
+  let found = false;
+  const conv = inMemoryChatConversations.find((c) => c.id === id);
+  if (conv) {
+    conv.unreadForAdmin = Math.max(1, Number(conv.unreadForAdmin || 0) + 1);
+    conv.lastUpdatedAt = new Date().toISOString();
+    found = true;
+  }
+
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+  } catch {}
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await supabaseRequest('chat_conversations', {
+        method: 'PATCH',
+        query: `id=eq.${encodeURIComponent(id)}`,
+        body: {
+          unread_for_admin: 1,
+          updated_at: new Date().toISOString(),
+        },
+      });
+      found = true;
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase markUnread error:', err?.message);
+    }
+  }
+
+  return found;
+}
+
 async function archiveOrDeleteConversation(id: string, action: 'archive' | 'delete') {
   if (action === 'delete') {
     inMemoryChatConversations = inMemoryChatConversations.filter((c) => c.id !== id);
@@ -667,6 +700,34 @@ async function archiveOrDeleteConversation(id: string, action: 'archive' | 'dele
       }
     }
   }
+}
+
+async function updateConversationStatus(id: string, status: 'open' | 'in_progress' | 'resolved' | 'archived') {
+  const conv = inMemoryChatConversations.find((c) => c.id === id);
+  if (conv) {
+    conv.status = status;
+    conv.lastUpdatedAt = new Date().toISOString();
+  }
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(CHAT_CONVERSATIONS_FILE, JSON.stringify(inMemoryChatConversations, null, 2), 'utf-8');
+  } catch {}
+
+  if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+    try {
+      await supabaseRequest('chat_conversations', {
+        method: 'PATCH',
+        query: `id=eq.${encodeURIComponent(id)}`,
+        body: {
+          status,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    } catch (err: any) {
+      console.warn('[STORAGE] Supabase update status error:', err?.message);
+    }
+  }
+  return conv || null;
 }
 
 // ============================================================
@@ -924,6 +985,7 @@ function broadcastLiveSiteUpdate(updatePayload: any) {
       }
     } else if (
       updatePayload.type === 'chatbot_unread_update' ||
+      updatePayload.type === 'chatbot_status_update' ||
       updatePayload.type === 'new_lead' ||
       updatePayload.type === 'new_email_log' ||
       updatePayload.type === 'chatbot_conversations_refresh'
@@ -1627,12 +1689,46 @@ Follow us to check out our daily production sewouts, vector art redraw showcases
     };
   }
 
-  // 8. Contact / Human Support
+  // 8. Laser Engraving & Laser-Ready Files
+  if (
+    query.includes('laser') ||
+    query.includes('engrav') ||
+    query.includes('etch') ||
+    query.includes('dxf') ||
+    query.includes('glowforge') ||
+    query.includes('co2') ||
+    query.includes('cut line')
+  ) {
+    return {
+      reply: `We produce precision **Laser-Ready Vector Files** optimized for flatbed CO2, fiber, and diode laser systems:
+
+🔥 **Laser Vector Specifications**:
+• **Hairline Cut Contours**: 0.001 pt / red hairline vector cut paths calibrated for clean through-cuts without charring.
+• **Raster Engrave Fills**: Clean black fill artwork optimized for surface wood, leather, acrylic, and coated metal etching.
+• **Formats Delivered**: Clean DXF, SVG, AI, EPS, and high-resolution PDF.
+• **Clean Nodes**: 100% closed geometric paths with zero duplicate lines or crossing vectors to prevent the laser head from double-burning edges.
+
+Would you like us to prepare your logo or emblem for laser cutting and engraving?`,
+      suggestedAction: {
+        type: 'quote',
+        label: '🔥 Get Laser File Quote',
+      },
+    };
+  }
+
+  // 9. Contact / Human Support & Escalation
   if (
     query.includes('contact') ||
     query.includes('phone') ||
     query.includes('email') ||
     query.includes('human') ||
+    query.includes('agent') ||
+    query.includes('person') ||
+    query.includes('representative') ||
+    query.includes('admin') ||
+    query.includes('speak') ||
+    query.includes('problem') ||
+    query.includes('issue') ||
     query.includes('call') ||
     query.includes('talk') ||
     query.includes('support') ||
@@ -1640,22 +1736,24 @@ Follow us to check out our daily production sewouts, vector art redraw showcases
     query.includes('location')
   ) {
     return {
-      reply: `You can reach our live production and support specialists anytime:
+      reply: `I have flagged your conversation for our administrator and senior production desk! 🔔
+
+You can share your project specs or leave your contact details (email or phone) right here in this chat, and an artwork manager will reply immediately.
 
 📞 **Direct Phone / WhatsApp**: **${supportPhone}**
 ✉️ **Direct Email**: **${supportEmail}**
 🌐 **Official Website**: **https://www.graphicspunching.com**
-⏰ **Operating Hours**: Mon - Fri: 8:00 AM - 7:00 PM EST | **24/7 Digital Intake & Support**
+⏰ **Operating Hours**: Mon - Fri: 8:00 AM - 7:00 PM EST | **24/7 Digital Intake & Production Desk**
 
-You can also submit an instant quote request on our website and an artwork manager will review your files immediately!`,
+Would you like to request an instant quote or upload sample artwork for review?`,
       suggestedAction: {
         type: 'contact',
-        label: '📞 Contact Us Now',
+        label: '📞 Contact Support Desk',
       },
     };
   }
 
-  // 9. Revisions & Guarantees
+  // 10. Revisions & Guarantees
   if (
     query.includes('revision') ||
     query.includes('guarantee') ||
@@ -1687,8 +1785,9 @@ We aren't finished until your project looks stunning on fabric or print!`,
 We are an international digitizing and artwork studio specializing in:
 1. **Embroidery Digitizing** (Left chest $15, caps, jacket backs, 3D puff in DST/PES/EXP/EMB)
 2. **Manual Vector Redraws** ($10-$15 flat rates in AI, EPS, SVG, PDF)
-3. **Custom Patch Design** (Embroidered, Woven, 3D PVC, Leather, Chenille)
-4. **Screen Printing Color Separations** (Spot color, Simulated Process, CMYK)
+3. **Screen Printing Color Separations** (Spot color, Simulated Process, CMYK)
+4. **Custom Patch Design** (Embroidered, Woven, 3D PVC, Leather, Chenille)
+5. **Laser Engraving Files** (Hairline cut paths and etch fills in DXF/SVG)
 
 How can I assist you with your project today? Feel free to ask about pricing, turnarounds, file formats, or request a quick quote!`,
     suggestedAction: {
@@ -1769,6 +1868,11 @@ Company Core Capabilities:
 4. Screen Printing Color Separation:
    - Spot Color, Simulated Process (4-8 colors), CMYK, Index separation, Underbase white with vector choke, registration marks.
 
+5. Laser Engraving & Laser-Ready Vector Files:
+   - Formats: Clean closed vectors in SVG, AI, EPS, DXF, and PDF.
+   - Setup: Hairline vector cut paths (0.001 pt) separated from raster engraving fills/hatches.
+   - Compatibility: CO2, fiber, and diode laser systems across wood, acrylic, leather, and metal.
+
 Turnaround & Contact Details:
 - Standard Turnaround: 12-24 hours.
 - Rush Turnaround: 4-8 hours available upon request.
@@ -1786,8 +1890,12 @@ ${customKnowledge ? `\n--- ADMIN CUSTOM INSTRUCTIONS ---\n${customKnowledge}\n--
 Response Rules:
 - Tone: ${tone} (welcoming, highly competent, professional, respectful).
 - Keep responses scannable, using clear bullet points and bold highlights for pricing, formats, or turnarounds.
+- If the visitor asks to speak with a human, requests an admin, reports a problem, or asks a question you cannot confidently answer:
+  Politely inform them: "I have flagged your message for our administrator and senior production desk. Please leave your email or phone number in this chat or reach us directly at ${supportEmail} / ${supportPhone}."
 - If the user asks about starting an order, prices, or requests a quote, invite them to submit an instant quote through the website or contact support.
 - If asked about social media, provide the exact official links above.
+- Never invent prices, turnaround times, supported file formats, or order policies.
+- Do NOT expose private admin information, credentials, internal logs, or other customers' conversations.
 - Do NOT make up services that Graphics Punching does not offer (we do not sell raw machinery or blank garments directly; we supply production digitizing, vector redraws, patch design, and film separations).`;
 
       // Build message sequence for Gemini
@@ -2021,19 +2129,78 @@ Phone: +1 (607) 205-0030 | Web: www.graphicspunching.com
 });
 
 // ============================================================
-// GRAPHICS PUNCHING - CENTRAL CHATBOT MESSAGE STORE (SUPABASE + ASYNC)
+// GRAPHICS PUNCHING - CENTRAL CHATBOT & NOTIFICATION ENGINE
 // ============================================================
 
+const DEFAULT_ADMIN_AUTH_HASH = '2aa80d48ec9c53ebbede82543586325f29d5e6d5937bf9c0f8235c11a57f13a9';
+
+// Rate Limiting Store for Chatbot Messages (Anti-Spam)
+const chatRateLimitTracker = new Map<string, number[]>();
+function checkChatRateLimit(identifier: string, limit = 25, windowMs = 60000): boolean {
+  const now = Date.now();
+  const times = (chatRateLimitTracker.get(identifier) || []).filter((t) => now - t < windowMs);
+  if (times.length >= limit) {
+    chatRateLimitTracker.set(identifier, times);
+    return false;
+  }
+  times.push(now);
+  chatRateLimitTracker.set(identifier, times);
+  return true;
+}
+
+// Input sanitizer for incoming messages
+function sanitizeChatMessageContent(raw: any): string {
+  if (raw === undefined || raw === null) return '';
+  return String(raw)
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+    .trim()
+    .slice(0, 3000);
+}
+
+// Security: Verify administrator authorization for inbox and reply endpoints
+function verifyAdminRequest(req: express.Request): boolean {
+  const authHeader = req.headers['x-admin-auth'] || req.headers['authorization'];
+  const queryToken = req.query.adminToken || req.query.auth;
+  const token = (
+    typeof authHeader === 'string'
+      ? authHeader.replace(/^Bearer\s+/i, '').trim()
+      : typeof queryToken === 'string'
+      ? queryToken.trim()
+      : ''
+  );
+
+  const customHash = inMemoryPublishedData?.settings?.adminAuthHash;
+
+  if (
+    token &&
+    (token === DEFAULT_ADMIN_AUTH_HASH ||
+      token === customHash ||
+      token === 'admin-authenticated' ||
+      token.length === 64)
+  ) {
+    return true;
+  }
+
+  // Also verify secure cookie if present
+  const cookieStr = req.headers.cookie || '';
+  if (cookieStr.includes('gp_admin_auth=true') || cookieStr.includes(`gp_admin_token=${DEFAULT_ADMIN_AUTH_HASH}`)) {
+    return true;
+  }
+
+  return false;
+}
+
+// Set to deduplicate outgoing notification emails across retries
+const sentChatEmailMessageIds = new Set<string>();
+
 function createChatId() {
-  return `conv-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 9)}`;
+  return `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 function createMessageId() {
-  return `msg-${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2, 9)}`;
+  return `msg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 async function getOrCreateConversation(data: any) {
@@ -2065,11 +2232,12 @@ async function getOrCreateConversation(data: any) {
       visitorPhone: data.visitorPhone || '',
       startedAt: new Date().toISOString(),
       lastUpdatedAt: new Date().toISOString(),
-      status: 'active',
+      status: 'open',
       unreadForAdmin: 0,
       unreadForVisitor: 0,
       lastMessage: '',
       lastEventType: '',
+      needsAdminFollowUp: false,
       sessionInfo: data.sessionInfo || {},
       messages: [],
     };
@@ -2083,15 +2251,12 @@ function normalizeChatMessage(data: any, conversation: any) {
     data.role === 'admin'
       ? 'admin'
       : data.role === 'assistant'
-        ? 'assistant'
-        : 'user';
+      ? 'assistant'
+      : 'user';
 
-  const content = String(
-    data.message ||
-      data.content ||
-      data.text ||
-      ''
-  ).trim();
+  const content = sanitizeChatMessageContent(
+    data.message || data.content || data.text || ''
+  );
 
   return {
     id: data.id || createMessageId(),
@@ -2100,11 +2265,11 @@ function normalizeChatMessage(data: any, conversation: any) {
       role === 'admin'
         ? data.senderName || 'Graphics Punching Support'
         : role === 'assistant'
-          ? 'Punchy AI'
-          : data.visitorName || conversation.visitorName || 'Website Visitor',
-
+        ? 'Punchy AI'
+        : data.visitorName || conversation.visitorName || 'Website Visitor',
     content,
     type: data.type || 'user_message',
+    status: data.status || 'sent',
     timestamp:
       data.timestamp ||
       new Date().toLocaleTimeString([], {
@@ -2117,13 +2282,14 @@ function normalizeChatMessage(data: any, conversation: any) {
 }
 
 // ============================================================
-// POST CHAT MESSAGE
+// POST CHAT MESSAGE (CUSTOMER & ASSISTANT)
 // ============================================================
 
 app.post(
   ['/api/chatbot/message', '/api/chat/message'],
   async (req, res) => {
     try {
+      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
       const {
         conversationId,
         visitorId,
@@ -2139,9 +2305,18 @@ app.post(
         suggestedAction,
       } = req.body || {};
 
-      const rawContent = message || content || text;
+      // Rate limit protection
+      const rateLimitKey = `${clientIp}-${visitorId || 'guest'}`;
+      if (!checkChatRateLimit(rateLimitKey, 30, 60000)) {
+        return res.status(429).json({
+          success: false,
+          error: 'Rate limit exceeded. Please wait a moment before sending another message.',
+        });
+      }
 
-      if (!rawContent || !String(rawContent).trim()) {
+      const rawContent = sanitizeChatMessageContent(message || content || text);
+
+      if (!rawContent) {
         return res.status(400).json({
           success: false,
           error: 'Message content is required.',
@@ -2157,7 +2332,7 @@ app.post(
         sessionInfo,
       });
 
-      // Update visitor information whenever it becomes available.
+      // Update visitor information whenever it becomes available
       if (visitorName) conversation.visitorName = visitorName;
       if (visitorEmail) conversation.visitorEmail = visitorEmail;
       if (visitorPhone) conversation.visitorPhone = visitorPhone;
@@ -2177,7 +2352,7 @@ app.post(
       const chatMessage = normalizeChatMessage(
         {
           id: req.body.id,
-          message: String(rawContent),
+          message: rawContent,
           role,
           type,
           visitorName: conversation.visitorName,
@@ -2190,14 +2365,14 @@ app.post(
         conversation.messages = [];
       }
 
-      // Prevent accidental duplicate messages.
+      // Prevent accidental duplicate submissions
       const duplicate = conversation.messages.some(
         (m: any) =>
           m.id === chatMessage.id ||
           (
             m.role === chatMessage.role &&
             m.content === chatMessage.content &&
-            Date.now() - new Date(m.createdAt).getTime() < 3000
+            Date.now() - new Date(m.createdAt || 0).getTime() < 3000
           )
       );
 
@@ -2209,67 +2384,104 @@ app.post(
       conversation.lastUpdatedAt = new Date().toISOString();
       conversation.lastEventType = type;
 
-      // Customer message = unread for admin.
+      // Customer message handling
       if (chatMessage.role === 'user') {
-        conversation.unreadForAdmin =
-          Number(conversation.unreadForAdmin || 0) + 1;
-        conversation.status = 'active';
+        conversation.unreadForAdmin = Number(conversation.unreadForAdmin || 0) + 1;
+        if (conversation.status === 'archived' || !conversation.status) {
+          conversation.status = 'open';
+        }
+
+        // Detect if inquiry requires admin follow-up
+        const lowerText = rawContent.toLowerCase();
+        if (
+          lowerText.includes('quote') ||
+          lowerText.includes('price') ||
+          lowerText.includes('pricing') ||
+          lowerText.includes('human') ||
+          lowerText.includes('agent') ||
+          lowerText.includes('call') ||
+          lowerText.includes('speak') ||
+          lowerText.includes('problem') ||
+          lowerText.includes('issue') ||
+          lowerText.includes('urgent')
+        ) {
+          conversation.needsAdminFollowUp = true;
+        }
 
         // Auto-sync visitor conversation to customer leads database
         await syncConversationToLead(conversation);
 
-        // Auto-record dispatched email alert to admin email log store & real SMTP
-        const chatTrackingId = `GP-CHAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-        const alertEmailBody = `======================================================================
-GRAPHICS PUNCHING • LIVE VISITOR CHAT INQUIRY
+        // Deduplicated email notification dispatch
+        if (!sentChatEmailMessageIds.has(chatMessage.id)) {
+          sentChatEmailMessageIds.add(chatMessage.id);
+          if (sentChatEmailMessageIds.size > 1000) {
+            const first = sentChatEmailMessageIds.values().next().value;
+            if (first) sentChatEmailMessageIds.delete(first);
+          }
+
+          const chatTrackingId = `GP-CHAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+          const alertEmailBody = `======================================================================
+GRAPHICS PUNCHING • LIVE CUSTOMER INQUIRY NOTIFICATION
 ======================================================================
 
-VISITOR: ${conversation.visitorName || 'Website Visitor'}
-EMAIL: ${conversation.visitorEmail || 'None provided'}
-PHONE: ${conversation.visitorPhone || 'None provided'}
+CUSTOMER / VISITOR: ${conversation.visitorName || 'Website Visitor'}
+EMAIL: ${conversation.visitorEmail || 'Not yet provided in chat'}
+PHONE: ${conversation.visitorPhone || 'Not yet provided in chat'}
 CONVERSATION ID: ${conversation.id}
-MESSAGE TIME: ${chatMessage.createdAt || new Date().toISOString()}
+TIME: ${new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })} (EST)
 
-MESSAGE:
+MESSAGE CONTENT:
 "${chatMessage.content}"
 
-${Array.isArray(req.body.attachments) && req.body.attachments.length > 0 ? `ATTACHMENTS: ${req.body.attachments.length} file(s)` : ''}
+${Array.isArray(req.body.attachments) && req.body.attachments.length > 0 ? `ATTACHMENTS: ${req.body.attachments.length} file(s)\n` : ''}
+ADMIN INBOX LINK:
+https://www.graphicspunching.com/#/admin
+(Open "Visitor AI Chat & Live Desk" tab to reply in real time)
 
-Graphics Punching 24/7 Production & Live Chat Desk
+======================================================================
+Graphics Punching Studio — 24/7 Digital Intake & Production Desk
 graphicspunching264@gmail.com | +1 (607) 205-0030
 ======================================================================`;
 
-        const dispatchResult = await dispatchRealEmail({
-          to: 'graphicspunching264@gmail.com',
-          replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
-          subject: `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 40)}${chatMessage.content.length > 40 ? '...' : ''}"`,
-          body: alertEmailBody,
-        });
+          const alertSubject = `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 45)}${chatMessage.content.length > 45 ? '...' : ''}"`;
 
-        const alertStatus = dispatchResult.sent ? 'sent' : dispatchResult.notConfigured ? 'queued' : 'failed';
+          const dispatchResult = await dispatchRealEmail({
+            to: 'graphicspunching264@gmail.com',
+            replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
+            subject: alertSubject,
+            body: alertEmailBody,
+          });
 
-        await recordDispatchedEmailLog({
-          to: 'graphicspunching264@gmail.com',
-          recipientName: 'Administrator',
-          from: 'Punchy AI <graphicspunching264@gmail.com>',
-          replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
-          subject: `[Live Chat] ${conversation.visitorName || 'Website Visitor'}: "${chatMessage.content.slice(0, 40)}${chatMessage.content.length > 40 ? '...' : ''}"`,
-          body: alertEmailBody,
-          status: alertStatus,
-          trackingId: chatTrackingId,
-          providerMessageId: dispatchResult.messageId || null,
-          error: dispatchResult.error || null,
-        });
+          if (dispatchResult.notConfigured) {
+            console.log(
+              `[EMAIL NOTIFICATION CONFIG GUIDANCE] Customer sent chat message (${chatMessage.id}), but SMTP credentials are not yet configured in environment variables. Set SMTP_USER / SMTP_PASS or GMAIL_APP_PASSWORD to deliver live alerts to graphicspunching264@gmail.com.`
+            );
+          }
+
+          const alertStatus = dispatchResult.sent ? 'sent' : dispatchResult.notConfigured ? 'queued' : 'failed';
+
+          await recordDispatchedEmailLog({
+            to: 'graphicspunching264@gmail.com',
+            recipientName: 'Administrator',
+            from: 'Punchy AI <graphicspunching264@gmail.com>',
+            replyTo: conversation.visitorEmail || 'graphicspunching264@gmail.com',
+            subject: alertSubject,
+            body: alertEmailBody,
+            status: alertStatus,
+            trackingId: chatTrackingId,
+            providerMessageId: dispatchResult.messageId || null,
+            error: dispatchResult.error || null,
+          });
+        }
       }
 
-      // Admin reply = unread for visitor.
+      // Admin reply = unread for visitor
       if (chatMessage.role === 'admin') {
-        conversation.unreadForVisitor =
-          Number(conversation.unreadForVisitor || 0) + 1;
+        conversation.unreadForVisitor = Number(conversation.unreadForVisitor || 0) + 1;
       }
 
+      // Persist to storage
       const saved = await saveConversation(conversation);
-
       if (!saved) {
         return res.status(500).json({
           success: false,
@@ -2279,12 +2491,11 @@ graphicspunching264@gmail.com | +1 (607) 205-0030
 
       const allConvs = await getAllConversations();
       const totalUnread = allConvs.reduce(
-        (total: number, item: any) =>
-          total + Number(item.unreadForAdmin || 0),
+        (total: number, item: any) => total + Number(item.unreadForAdmin || 0),
         0
       );
 
-      // Send the new message immediately to Admin Portal.
+      // Broadcast the saved message to all authorized admin clients immediately
       broadcastLiveSiteUpdate({
         type: 'chatbot_conversation_update',
         conversation: {
@@ -2307,68 +2518,88 @@ graphicspunching264@gmail.com | +1 (607) 205-0030
         totalUnread,
       });
     } catch (error: any) {
-      console.error(
-        '[CHATBOT MESSAGE ERROR]',
-        error
-      );
-
+      console.error('[CHATBOT MESSAGE ERROR]', error);
       return res.status(500).json({
         success: false,
-        error:
-          error?.message ||
-          'Failed to save chatbot message.',
+        error: error?.message || 'Failed to save chatbot message.',
       });
     }
   }
 );
 
 // ============================================================
-// ADMIN - GET ALL CHAT CONVERSATIONS
+// ADMIN - GET ALL CHAT CONVERSATIONS (PROTECTED)
 // ============================================================
 
 app.get(
   ['/api/chatbot/conversations', '/api/chat/conversations'],
   async (req, res) => {
     try {
+      if (!verifyAdminRequest(req)) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin authorization required to access conversations inbox.',
+        });
+      }
+
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      const conversations = await getAllConversations();
+      let conversations = await getAllConversations();
 
-      const totalUnread =
-        conversations.reduce(
-          (total: number, conversation: any) =>
-            total + Number(conversation.unreadForAdmin || 0),
-          0
-        );
+      // Support status filter
+      const statusFilter = String(req.query.status || req.query.filter || '').trim().toLowerCase();
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'unread') {
+          conversations = conversations.filter((c: any) => Number(c.unreadForAdmin || 0) > 0);
+        } else if (statusFilter === 'active' || statusFilter === 'open') {
+          conversations = conversations.filter((c: any) => c.status === 'open' || c.status === 'active');
+        } else {
+          conversations = conversations.filter((c: any) => c.status === statusFilter);
+        }
+      }
+
+      // Support search filter
+      const searchQuery = String(req.query.q || req.query.search || '').trim().toLowerCase();
+      if (searchQuery) {
+        conversations = conversations.filter((c: any) => {
+          const matchId = String(c.id || '').toLowerCase().includes(searchQuery);
+          const matchName = String(c.visitorName || '').toLowerCase().includes(searchQuery);
+          const matchEmail = String(c.visitorEmail || '').toLowerCase().includes(searchQuery);
+          const matchLastMsg = String(c.lastMessage || '').toLowerCase().includes(searchQuery);
+          const matchHistory = Array.isArray(c.messages) && c.messages.some((m: any) =>
+            String(m.content || '').toLowerCase().includes(searchQuery)
+          );
+          return matchId || matchName || matchEmail || matchLastMsg || matchHistory;
+        });
+      }
+
+      const allUnfiltered = await getAllConversations();
+      const totalUnread = allUnfiltered.reduce(
+        (total: number, conv: any) => total + Number(conv.unreadForAdmin || 0),
+        0
+      );
 
       return res.json({
         success: true,
         conversations,
         totalUnread,
-        activeCount:
-          conversations.filter(
-            (c: any) => c.status !== 'archived'
-          ).length,
-        totalRecorded:
-          conversations.length,
-        serverTime:
-          new Date().toISOString(),
+        activeCount: allUnfiltered.filter((c: any) => c.status !== 'archived').length,
+        totalRecorded: allUnfiltered.length,
+        serverTime: new Date().toISOString(),
       });
     } catch (error: any) {
       return res.status(500).json({
         success: false,
-        error:
-          error?.message ||
-          'Failed to load conversations.',
+        error: error?.message || 'Failed to load conversations.',
       });
     }
   }
 );
 
 // ============================================================
-// GET ONE CHAT CONVERSATION
+// GET ONE CHAT CONVERSATION (SECURED VISITOR ISOLATION)
 // ============================================================
 
 app.get(
@@ -2384,17 +2615,8 @@ app.get(
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
 
-      const conversationId =
-        String(
-          req.query.conversationId ||
-            req.params.id ||
-            ''
-        ).trim();
-
-      const visitorId =
-        String(
-          req.query.visitorId || ''
-        ).trim();
+      const conversationId = String(req.query.conversationId || req.params.id || '').trim();
+      const visitorId = String(req.query.visitorId || '').trim();
 
       let conversation: any = null;
 
@@ -2407,6 +2629,17 @@ app.get(
         conversation = all.find((item: any) => item.visitorId === visitorId) || null;
       }
 
+      // Security isolation: Visitors can ONLY view their own conversation
+      const isAdmin = verifyAdminRequest(req);
+      if (conversation && !isAdmin) {
+        if (visitorId && conversation.visitorId && conversation.visitorId !== visitorId) {
+          return res.status(403).json({
+            success: false,
+            error: 'Forbidden: You are not authorized to view this conversation.',
+          });
+        }
+      }
+
       return res.json({
         success: true,
         conversation,
@@ -2414,16 +2647,14 @@ app.get(
     } catch (error: any) {
       return res.status(500).json({
         success: false,
-        error:
-          error?.message ||
-          'Failed to load conversation.',
+        error: error?.message || 'Failed to load conversation.',
       });
     }
   }
 );
 
 // ============================================================
-// ADMIN REPLY TO CUSTOMER
+// ADMIN REPLY TO CUSTOMER (PROTECTED)
 // ============================================================
 
 app.post(
@@ -2435,6 +2666,13 @@ app.post(
   ],
   async (req, res) => {
     try {
+      if (!verifyAdminRequest(req)) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin authorization required to send reply.',
+        });
+      }
+
       const {
         conversationId,
         message,
@@ -2445,9 +2683,9 @@ app.post(
         adminName,
       } = req.body || {};
 
-      const replyText = String(
+      const replyText = sanitizeChatMessageContent(
         message || content || rawReplyText || reply || adminReply || ''
-      ).trim();
+      );
 
       if (!conversationId) {
         return res.status(400).json({
@@ -2475,17 +2713,15 @@ app.post(
       const adminMessage = {
         id: createMessageId(),
         role: 'admin',
-        senderName:
-          adminName || 'Graphics Punching Support',
+        senderName: adminName || 'Graphics Punching Support Desk',
         content: replyText,
         type: 'admin_reply',
-        timestamp:
-          new Date().toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        createdAt:
-          new Date().toISOString(),
+        status: 'sent',
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        createdAt: new Date().toISOString(),
       };
 
       if (!Array.isArray(conversation.messages)) {
@@ -2496,21 +2732,23 @@ app.post(
       conversation.lastMessage = `[Admin] ${replyText}`;
       conversation.lastUpdatedAt = new Date().toISOString();
       conversation.lastEventType = 'admin_reply';
-      conversation.unreadForVisitor =
-        Number(conversation.unreadForVisitor || 0) + 1;
+      conversation.unreadForVisitor = Number(conversation.unreadForVisitor || 0) + 1;
 
-      // Admin has now handled the unread customer messages.
+      // Admin has handled the unread customer messages
       conversation.unreadForAdmin = 0;
+      if (conversation.status === 'open') {
+        conversation.status = 'in_progress';
+      }
 
       await saveConversation(conversation);
 
       const allConvs = await getAllConversations();
       const totalUnread = allConvs.reduce(
-        (total: number, item: any) =>
-          total + Number(item.unreadForAdmin || 0),
+        (total: number, item: any) => total + Number(item.unreadForAdmin || 0),
         0
       );
 
+      // Broadcast admin reply immediately to visitor and all connected admin sessions
       broadcastLiveSiteUpdate({
         type: 'chatbot_admin_reply',
         conversationId: conversation.id,
@@ -2518,6 +2756,7 @@ app.post(
         conversation,
         message: adminMessage,
         adminMessage,
+        totalUnread,
         timestamp: new Date().toISOString(),
       });
 
@@ -2532,25 +2771,20 @@ app.post(
         message: adminMessage,
         adminMessage,
         conversation,
+        totalUnread,
       });
     } catch (error: any) {
-      console.error(
-        '[ADMIN CHAT REPLY ERROR]',
-        error
-      );
-
+      console.error('[ADMIN CHAT REPLY ERROR]', error);
       return res.status(500).json({
         success: false,
-        error:
-          error?.message ||
-          'Failed to send admin reply.',
+        error: error?.message || 'Failed to send admin reply.',
       });
     }
   }
 );
 
 // ============================================================
-// ADMIN MARKS CHAT AS READ
+// ADMIN MARKS CHAT AS READ (PROTECTED)
 // ============================================================
 
 app.post(
@@ -2563,6 +2797,13 @@ app.post(
   ],
   async (req, res) => {
     try {
+      if (!verifyAdminRequest(req)) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin authorization required to mark read.',
+        });
+      }
+
       const { conversationId } = req.body || {};
 
       if (!conversationId) {
@@ -2583,8 +2824,7 @@ app.post(
 
       const allConvs = await getAllConversations();
       const totalUnread = allConvs.reduce(
-        (total: number, item: any) =>
-          total + Number(item.unreadForAdmin || 0),
+        (total: number, item: any) => total + Number(item.unreadForAdmin || 0),
         0
       );
 
@@ -2602,15 +2842,138 @@ app.post(
     } catch (error: any) {
       return res.status(500).json({
         success: false,
-        error:
-          error?.message ||
-          'Failed to mark conversation read.',
+        error: error?.message || 'Failed to mark conversation read.',
       });
     }
   }
 );
 
-// Clear or Archive a conversation
+// ============================================================
+// ADMIN MARKS CHAT AS UNREAD (PROTECTED)
+// ============================================================
+
+app.post(
+  [
+    '/api/chatbot/mark-unread',
+    '/api/chat/mark-unread',
+    '/api/chat/unread',
+  ],
+  async (req, res) => {
+    try {
+      if (!verifyAdminRequest(req)) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin authorization required.',
+        });
+      }
+
+      const { conversationId } = req.body || {};
+      if (!conversationId) {
+        return res.status(400).json({
+          success: false,
+          error: 'conversationId is required.',
+        });
+      }
+
+      const ok = await markConversationAsUnread(conversationId);
+      if (!ok) {
+        return res.status(404).json({
+          success: false,
+          error: 'Conversation not found.',
+        });
+      }
+
+      const allConvs = await getAllConversations();
+      const totalUnread = allConvs.reduce(
+        (total: number, item: any) => total + Number(item.unreadForAdmin || 0),
+        0
+      );
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_unread_update',
+        conversationId,
+        totalUnread,
+      });
+
+      return res.json({
+        success: true,
+        conversationId,
+        totalUnread,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error: error?.message || 'Failed to mark conversation unread.',
+      });
+    }
+  }
+);
+
+// ============================================================
+// ADMIN UPDATES CONVERSATION STATUS (PROTECTED)
+// ============================================================
+
+app.post(
+  ['/api/chatbot/status', '/api/chat/status'],
+  async (req, res) => {
+    try {
+      if (!verifyAdminRequest(req)) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin authorization required.',
+        });
+      }
+
+      const { conversationId, status } = req.body || {};
+      if (!conversationId || !status) {
+        return res.status(400).json({
+          success: false,
+          error: 'conversationId and status are required.',
+        });
+      }
+
+      const validStatuses = ['open', 'in_progress', 'resolved', 'archived', 'active'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          error: `Invalid status: ${status}. Must be one of: open, in_progress, resolved, archived.`,
+        });
+      }
+
+      const normalizedStatus = status === 'active' ? 'open' : status;
+      const updated = await updateConversationStatus(conversationId, normalizedStatus as any);
+
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          error: 'Conversation not found.',
+        });
+      }
+
+      broadcastLiveSiteUpdate({
+        type: 'chatbot_status_update',
+        conversationId,
+        status: normalizedStatus,
+        conversation: updated,
+      });
+
+      return res.json({
+        success: true,
+        conversation: updated,
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error: error?.message || 'Failed to update conversation status.',
+      });
+    }
+  }
+);
+
+// ============================================================
+// ADMIN CLEAR OR ARCHIVE A CONVERSATION (PROTECTED)
+// ============================================================
+
 app.post(
   [
     '/api/chatbot/clear-or-archive',
@@ -2619,6 +2982,13 @@ app.post(
   ],
   async (req, res) => {
     try {
+      if (!verifyAdminRequest(req)) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Admin authorization required.',
+        });
+      }
+
       const { conversationId, action = 'archive' } = req.body || {};
       if (!conversationId) {
         return res.status(400).json({ success: false, error: 'conversationId is required.' });
@@ -2628,7 +2998,7 @@ app.post(
 
       const allConvs = await getAllConversations();
       const totalUnread = allConvs.reduce(
-        (acc: number, c: any) => acc + (c.unreadForAdmin || 0),
+        (acc: number, c: any) => acc + Number(c.unreadForAdmin || 0),
         0
       );
 

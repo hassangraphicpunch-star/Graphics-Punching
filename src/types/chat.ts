@@ -17,6 +17,7 @@ export interface ChatMessageItem {
   timestamp: string;
   createdAt?: string;
   type?: ChatEventType;
+  status?: 'sending' | 'sent' | 'failed';
   suggestedAction?: {
     type: string;
     label: string;
@@ -33,11 +34,12 @@ export interface ChatConversation {
   visitorPhone?: string;
   startedAt: string;
   lastUpdatedAt: string;
-  status: 'active' | 'archived' | 'resolved';
+  status: 'open' | 'in_progress' | 'resolved' | 'archived' | 'active';
   unreadForAdmin: number;
   unreadForVisitor: number;
   lastMessage: string;
   lastEventType: ChatEventType | string;
+  needsAdminFollowUp?: boolean;
   sessionInfo?: {
     url?: string;
     platform?: string;

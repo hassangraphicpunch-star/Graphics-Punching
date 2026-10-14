@@ -22,7 +22,11 @@ import {
   Zap,
   Phone,
   Globe,
-  Monitor
+  Monitor,
+  Bell,
+  BellRing,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import { ChatConversation, ChatMessageItem } from '../../types/chat';
 import { useWebsiteSettings } from '../../context/AdminSettingsContext';
@@ -32,59 +36,34 @@ interface LiveVisitorChatInboxProps {
 }
 
 export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onComposeTo }) => {
-  const { sseStatus, sseError, subscribeToRealtimeEvents } = useWebsiteSettings();
+  const {
+    sseStatus,
+    sseError,
+    subscribeToRealtimeEvents,
+    soundEnabled,
+    toggleSound,
+    playNotificationChime,
+    browserNotificationsEnabled,
+    browserNotificationPermission,
+    requestBrowserNotificationPermission,
+    markConversationReadLocally,
+    markConversationUnreadLocally,
+  } = useWebsiteSettings();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'unread' | 'active' | 'archived'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'unread' | 'open' | 'in_progress' | 'resolved' | 'archived'>('all');
   const [replyText, setReplyText] = useState('');
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('gp_chime_sound_enabled') !== 'false';
-    } catch {
-      return true;
-    }
-  });
   const [lastNotification, setLastNotification] = useState<{ title: string; text: string } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const playedMessageIdsRef = useRef<Set<string>>(new Set());
 
   // Play audio chime for incoming messages using Web Audio API
   const playChime = () => {
-    if (!soundEnabled) return;
-    try {
-      if (!audioContextRef.current) {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (AudioContextClass) {
-          audioContextRef.current = new AudioContextClass();
-        }
-      }
-      const ctx = audioContextRef.current;
-      if (!ctx) return;
-
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
-
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.36);
-    } catch (e) {
-      console.warn('Audio chime playback omitted:', e);
-    }
+    playNotificationChime();
   };
 
   // Fetch all chat conversations from server with optional silent background mode
@@ -189,6 +168,14 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
             const withoutUpdated = prev.filter((c) => c.id !== updatedConv.id);
             return [updatedConv, ...withoutUpdated];
           });
+        } else if (packet.type === 'chatbot_status_update' && packet.conversationId) {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === packet.conversationId
+                ? { ...c, status: packet.status || c.status, ...(packet.conversation || {}) }
+                : c
+            )
+          );
         } else if (packet.type === 'chatbot_unread_update') {
           if (packet.conversationId) {
             setConversations((prev) =>
@@ -224,17 +211,47 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
   // Mark conversation as read
   const handleMarkAsRead = async (convId: string) => {
     try {
-      await fetch('/api/chatbot/mark-read', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ conversationId: convId }),
-      });
+      await markConversationReadLocally(convId);
       setConversations((prev) =>
         prev.map((c) => (c.id === convId ? { ...c, unreadForAdmin: 0 } : c))
       );
     } catch (e) {
       console.warn('Failed to mark read:', e);
+    }
+  };
+
+  // Mark conversation as unread
+  const handleMarkAsUnread = async (convId: string) => {
+    try {
+      await markConversationUnreadLocally(convId);
+      setConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, unreadForAdmin: Math.max(1, (c.unreadForAdmin || 0) + 1) } : c))
+      );
+    } catch (e) {
+      console.warn('Failed to mark unread:', e);
+    }
+  };
+
+  // Update conversation status (open, in_progress, resolved, archived)
+  const handleUpdateStatus = async (
+    convId: string,
+    status: 'open' | 'in_progress' | 'resolved' | 'archived'
+  ) => {
+    try {
+      const res = await fetch('/api/chatbot/status', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: convId, status }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setConversations((prev) =>
+          prev.map((c) => (c.id === convId ? { ...c, status, ...(data.conversation || {}) } : c))
+        );
+      }
+    } catch (e) {
+      console.warn('Failed to update status:', e);
     }
   };
 
@@ -350,8 +367,10 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
   // Filter conversations
   const filteredConversations = conversations.filter((c) => {
-    if (filterType === 'unread' && c.unreadForAdmin === 0) return false;
-    if (filterType === 'active' && c.status !== 'active') return false;
+    if (filterType === 'unread' && (c.unreadForAdmin || 0) === 0) return false;
+    if (filterType === 'open' && c.status !== 'open' && c.status !== 'active') return false;
+    if (filterType === 'in_progress' && c.status !== 'in_progress') return false;
+    if (filterType === 'resolved' && c.status !== 'resolved') return false;
     if (filterType === 'archived' && c.status !== 'archived') return false;
 
     if (searchQuery.trim()) {
@@ -494,14 +513,8 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const next = !soundEnabled;
-                setSoundEnabled(next);
-                try {
-                  localStorage.setItem('gp_chime_sound_enabled', String(next));
-                } catch {}
-              }}
-              title={soundEnabled ? 'Chime sound enabled' : 'Chime sound muted'}
+              onClick={toggleSound}
+              title={soundEnabled ? 'Chime sound is active' : 'Chime sound is muted'}
               className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
                 soundEnabled
                   ? 'bg-zinc-800 border-zinc-700 text-[#FFC400]'
@@ -513,7 +526,28 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
             </button>
 
             <button
-              onClick={fetchConversations}
+              onClick={async () => {
+                await requestBrowserNotificationPermission();
+              }}
+              title={
+                browserNotificationPermission === 'granted'
+                  ? 'Desktop alerts enabled'
+                  : 'Click to enable real-time desktop notifications'
+              }
+              className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                browserNotificationPermission === 'granted'
+                  ? 'bg-emerald-950/40 border-emerald-600/50 text-emerald-400'
+                  : 'bg-zinc-800 border-[#FFC400]/40 text-[#FFC400] hover:bg-zinc-750'
+              }`}
+            >
+              <BellRing className="w-4 h-4" />
+              <span className="hidden md:inline">
+                {browserNotificationPermission === 'granted' ? 'Alerts Active' : 'Enable Desktop Alerts'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => fetchConversations()}
               className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-white text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
@@ -544,7 +578,9 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
                 {[
                   { id: 'all', label: 'All' },
                   { id: 'unread', label: `Unread (${totalUnreadCount})` },
-                  { id: 'active', label: 'Active' },
+                  { id: 'open', label: 'Open' },
+                  { id: 'in_progress', label: 'In Progress' },
+                  { id: 'resolved', label: 'Resolved' },
                   { id: 'archived', label: 'Archived' },
                 ].map((tab) => (
                   <button
@@ -673,15 +709,25 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
                         <h3 className="text-sm font-black text-white font-display">
                           {selectedConversation.visitorName}
                         </h3>
-                        <span
-                          className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                            selectedConversation.status === 'active'
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-zinc-800 text-zinc-400'
+                        {/* Interactive Status Selector */}
+                        <select
+                          value={selectedConversation.status || 'open'}
+                          onChange={(e) => handleUpdateStatus(selectedConversation.id, e.target.value as any)}
+                          className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-lg border cursor-pointer focus:outline-none transition-all ${
+                            selectedConversation.status === 'open' || selectedConversation.status === 'active'
+                              ? 'bg-emerald-950/60 text-emerald-400 border-emerald-600/50'
+                              : selectedConversation.status === 'in_progress'
+                              ? 'bg-amber-950/60 text-amber-400 border-amber-600/50'
+                              : selectedConversation.status === 'resolved'
+                              ? 'bg-blue-950/60 text-blue-400 border-blue-600/50'
+                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                           }`}
                         >
-                          {selectedConversation.status}
-                        </span>
+                          <option value="open">🟢 Open</option>
+                          <option value="in_progress">🟡 In Progress</option>
+                          <option value="resolved">🔵 Resolved</option>
+                          <option value="archived">⚪ Archived</option>
+                        </select>
                       </div>
                       <div className="flex items-center gap-3 text-[11px] text-zinc-400 mt-0.5">
                         <span className="flex items-center gap-1 font-mono text-[10px]">
@@ -702,6 +748,27 @@ export const LiveVisitorChatInbox: React.FC<LiveVisitorChatInboxProps> = ({ onCo
 
                   {/* Actions Header */}
                   <div className="flex items-center gap-2">
+                    {/* Mark Read / Unread Action */}
+                    {selectedConversation.unreadForAdmin > 0 ? (
+                      <button
+                        onClick={() => handleMarkAsRead(selectedConversation.id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Mark conversation as read"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Mark Read</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleMarkAsUnread(selectedConversation.id)}
+                        className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                        title="Mark conversation as unread"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Mark Unread</span>
+                      </button>
+                    )}
+
                     {onComposeTo && (
                       <button
                         onClick={() =>
