@@ -60,6 +60,13 @@ export const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
     canonicalPath: '/#/screen-printing-files',
     ogType: 'website',
   },
+  'patch-files': {
+    title: 'Custom Patch Files & Sewout Portfolio | Graphics Punching',
+    description: 'Factory-calibrated digital embroidery patch files, woven micro-thread files, 3D molded PVC rubber patches, and real patch mockups in Tajima DST, PES, and EMB.',
+    keywords: 'patch files portfolio, embroidered patch samples, PVC rubber patches, custom patch digitizing, patch mockups, DST files',
+    canonicalPath: '/#/patch-files',
+    ogType: 'website',
+  },
   'patch-design': {
     title: 'Custom Patch Design & Digitizing | Embroidered, Woven & PVC Patches - Graphics Punching',
     description: 'Factory-tested custom patch digitizing, merrowed borders, laser-cut edges, and iron-on/velcro backing files in Tajima DST, PES, and EMB with 4-8h turnaround.',

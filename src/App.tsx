@@ -18,6 +18,7 @@ import { VectorFilesPage } from './pages/VectorFilesPage';
 import { EmbroideryFilesPage } from './pages/EmbroideryFilesPage';
 import { ScreenPrintingFilesPage } from './pages/ScreenPrintingFilesPage';
 import { PatchDesignPage } from './pages/PatchDesignPage';
+import { PatchFilesPage } from './pages/PatchFilesPage';
 import { AboutPage } from './pages/AboutPage';
 import { HowItWorksPage } from './pages/HowItWorksPage';
 import { TestimonialsPage } from './pages/TestimonialsPage';
@@ -47,6 +48,7 @@ function resolveRouteFromUrl(): string {
     'vector-files',
     'embroidery-files',
     'screen-printing-files',
+    'patch-files',
     'patch-design',
     'about',
     'how-it-works',
@@ -70,7 +72,8 @@ function resolveRouteFromUrl(): string {
   if (['portfolio-vector', 'vector', 'vectors', 'vector-art', 'vector-artwork'].includes(candidate)) return 'vector-files';
   if (['portfolio-embroidery', 'embroidery', 'embroidery-digitizing', 'digitizing'].includes(candidate)) return 'embroidery-files';
   if (['portfolio-screen-printing', 'screen-printing', 'screen-print', 'color-separations'].includes(candidate)) return 'screen-printing-files';
-  if (['patch', 'patches', 'patch-files', 'custom-patches', 'custom-patch'].includes(candidate)) return 'patch-design';
+  if (['portfolio-patch', 'patch-files', 'patch-portfolio', 'patches-only', 'patch-files-only', 'patch-file'].includes(candidate)) return 'patch-files';
+  if (['patch', 'patches', 'custom-patches', 'custom-patch'].includes(candidate)) return 'patch-files';
 
   return 'home';
 }
@@ -249,6 +252,13 @@ function MainAppContent() {
 
             {currentPage === 'screen-printing-files' && (
               <ScreenPrintingFilesPage
+                onOpenQuoteModal={openQuoteModal}
+                onNavigate={navigateTo}
+              />
+            )}
+
+            {currentPage === 'patch-files' && (
+              <PatchFilesPage
                 onOpenQuoteModal={openQuoteModal}
                 onNavigate={navigateTo}
               />

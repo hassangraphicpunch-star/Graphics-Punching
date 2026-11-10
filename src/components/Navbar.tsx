@@ -75,6 +75,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     'vector-files', 
     'embroidery-files', 
     'screen-printing-files',
+    'patch-files',
     'patch-design',
     'portfolio-vector',
     'portfolio-embroidery',

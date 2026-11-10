@@ -9,33 +9,70 @@ import { WatermarkedPortfolioImage } from './WatermarkedPortfolioImage';
 import { downloadWatermarkedImage } from '../utils/watermark';
 import { useWebsiteSettings } from '../context/AdminSettingsContext';
 import { PortfolioItem, PORTFOLIO_PROJECTS } from '../data/content';
+import { PATCH_PORTFOLIO_ITEMS } from '../data/patchPortfolio';
 
 interface PortfolioSectionProps {
   onOpenQuoteModalWithItem?: (itemTitle: string) => void;
+  initialCategory?: string;
 }
 
-export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ onOpenQuoteModalWithItem }) => {
+const patchPortfolioItems: PortfolioItem[] = PATCH_PORTFOLIO_ITEMS.map((item) => ({
+  id: item.id,
+  title: item.title,
+  category: 'patch' as any,
+  categoryLabel: `Custom Patches • ${item.categoryName}`,
+  image: item.image,
+  tag: item.tag,
+  specs: `${item.dimensions} | ${item.stitchCount} | ${item.borderType}`,
+  client: `${item.applicationGarment} (Dual-View Standalone + Mockup)`,
+  description: `${item.standaloneDescription}\n\n${item.applicationDescription}\n\nThreads: ${item.threads}\nBacking: ${item.backingType}`,
+  stitchCount: item.stitchCount,
+  turnaround: item.turnaround,
+  deliverables: item.formatFiles,
+}));
+
+export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ 
+  onOpenQuoteModalWithItem,
+  initialCategory = 'all'
+}) => {
   const { portfolioItems } = useWebsiteSettings();
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [selectedProject, setSelectedProject] = useState<PortfolioItem | null>(null);
   const [visibleLimit, setVisibleLimit] = useState<number>(12);
   const [isLightboxOpen, setIsLightboxOpen] = useState<boolean>(false);
   const [lightboxIndex, setLightboxIndex] = useState<number>(0);
 
-  const activeProjects: PortfolioItem[] = portfolioItems && portfolioItems.length > 0
+  const isPatchProject = (p: PortfolioItem) => {
+    return p.category === ('patch' as any) ||
+      p.id.startsWith('patch-') ||
+      p.title.toLowerCase().includes('patch') ||
+      p.tag?.toLowerCase().includes('patch') ||
+      p.specs?.toLowerCase().includes('patch');
+  };
+
+  const baseProjects: PortfolioItem[] = portfolioItems && portfolioItems.length > 0
     ? portfolioItems
     : PORTFOLIO_PROJECTS;
+
+  // Combine base projects with patch portfolio showcases without duplicates
+  const activeProjects: PortfolioItem[] = [
+    ...baseProjects,
+    ...patchPortfolioItems.filter(p => !baseProjects.some(existing => existing.id === p.id))
+  ];
 
   const categories = [
     { id: 'all', label: 'ALL WORK' },
     { id: 'embroidery', label: 'EMBROIDERY DIGITIZING' },
     { id: 'vector-artwork', label: 'VECTOR ARTWORK' },
     { id: 'screen-printing', label: 'SCREEN PRINTING' },
+    { id: 'patch', label: 'PATCH FILES' },
   ];
 
   const filteredProjects = selectedCategory === 'all'
     ? activeProjects
-    : activeProjects.filter((p) => p.category === selectedCategory);
+    : selectedCategory === 'patch'
+      ? activeProjects.filter(isPatchProject)
+      : activeProjects.filter((p) => p.category === selectedCategory);
 
   const displayedProjects = filteredProjects.slice(0, visibleLimit);
   const hasMore = visibleLimit < filteredProjects.length;
@@ -92,7 +129,9 @@ export const PortfolioSection: React.FC<PortfolioSectionProps> = ({ onOpenQuoteM
             {categories.map((cat) => {
               const count = cat.id === 'all' 
                 ? activeProjects.length 
-                : activeProjects.filter(p => p.category === cat.id).length;
+                : cat.id === 'patch'
+                  ? activeProjects.filter(isPatchProject).length
+                  : activeProjects.filter(p => p.category === cat.id).length;
               const isActive = selectedCategory === cat.id;
 
               return (

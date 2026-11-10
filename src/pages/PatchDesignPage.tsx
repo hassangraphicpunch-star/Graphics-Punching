@@ -9,6 +9,7 @@ import { PORTFOLIO_PROJECTS, PortfolioItem } from '../data/content';
 import { ImageLightboxModal, LightboxImageItem } from '../components/ImageLightboxModal';
 import { WatermarkOverlay } from '../components/WatermarkOverlay';
 import { WatermarkedPortfolioImage } from '../components/WatermarkedPortfolioImage';
+import { PatchPortfolioGallery } from '../components/PatchPortfolioGallery';
 
 interface PatchDesignPageProps {
   onOpenQuoteModal: (serviceId?: string, tierId?: string, itemTitle?: string) => void;
@@ -359,6 +360,13 @@ export const PatchDesignPage: React.FC<PatchDesignPageProps> = ({ onOpenQuoteMod
               <ArrowRight className="w-4 h-4" />
             </button>
             <a
+              href="#patch-collection"
+              className="bg-[#FFC400]/15 hover:bg-[#FFC400]/25 text-[#FFC400] border border-[#FFC400]/40 font-bold text-xs sm:text-sm uppercase tracking-wider px-6 py-3.5 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              <Award className="w-4 h-4 text-[#FFC400]" />
+              <span>10 Patch Styles (2-in-1 Dual View)</span>
+            </a>
+            <a
               href="#patch-calculator"
               className="bg-zinc-900 hover:bg-zinc-800 text-white border border-zinc-700 font-bold text-xs sm:text-sm uppercase tracking-wider px-6 py-3.5 rounded-xl transition-colors flex items-center gap-2 cursor-pointer"
             >
@@ -503,6 +511,13 @@ export const PatchDesignPage: React.FC<PatchDesignPageProps> = ({ onOpenQuoteMod
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* 2.5 SIGNATURE DUAL-VIEW PATCH PRODUCT PORTFOLIO (10 CATEGORIES) */}
+      <section id="patch-collection" className="py-14 sm:py-20 bg-[#050505] text-white border-b border-zinc-800 scroll-mt-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <PatchPortfolioGallery onOpenQuoteModal={onOpenQuoteModal} />
         </div>
       </section>
 

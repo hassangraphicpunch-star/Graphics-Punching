@@ -28,27 +28,34 @@ export const PortfolioPage: React.FC<PortfolioPageProps> = ({ onOpenQuoteModalWi
             Browse our latest commercial screen printing, embroidery digitizing, vector artwork, and custom apparel projects. Click any project for full-size inspection and technical specifications.
           </p>
 
-          {/* Quick Dedicated Category Navigation */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          {/* Quick Dedicated Category Navigation - 4 matching responsive buttons */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 max-w-5xl mx-auto px-2">
             <button
               onClick={() => onNavigate('vector-files')}
-              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow"
+              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow whitespace-nowrap"
             >
               <span>Vector Files Only</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => onNavigate('embroidery-files')}
-              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow"
+              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow whitespace-nowrap"
             >
               <span>Embroidery Files Only</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => onNavigate('screen-printing-files')}
-              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow"
+              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow whitespace-nowrap"
             >
               <span>Screen Printing Files Only</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => onNavigate('patch-files')}
+              className="bg-zinc-900/90 hover:bg-[#FFC400] text-zinc-200 hover:text-black border border-zinc-800 hover:border-[#FFC400] text-xs font-black uppercase px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow whitespace-nowrap"
+            >
+              <span>Patch Files Only</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
